@@ -17,8 +17,12 @@ func NewAppointmentService(repo *repository.AppointmentRepository, dateRepo *rep
 }
 
 func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentRequest) (*model.Appointment, error) {
-	if req.ClientName == "" || req.Telegram == "" || req.Service == "" || req.Date == "" || req.Time == "" {
+	if req.ClientName == "" || req.Service == "" || req.Date == "" || req.Time == "" {
 		return nil, errors.New("все поля обязательны")
+	}
+
+	if req.Telegram == "" && req.Phone == "" {
+		return nil, errors.New("укажите Telegram или телефон")
 	}
 
 	available, err := s.dateRepo.IsAvailable(req.Date)
@@ -42,6 +46,7 @@ func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentReques
 	apt := &model.Appointment{
 		ClientName: req.ClientName,
 		Telegram:   req.Telegram,
+		Phone:      req.Phone,
 		Service:    req.Service,
 		Date:       req.Date,
 		Time:       req.Time,
