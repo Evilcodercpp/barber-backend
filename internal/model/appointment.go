@@ -71,9 +71,10 @@ type Supply struct {
 	Type     string `json:"type" gorm:"not null;index"` // "paint" или "material"
 	Brand    string `json:"brand" gorm:"not null"`
 	Name     string `json:"name" gorm:"not null"`
-	Quantity int    `json:"quantity" gorm:"default:0"`
+	Quantity int    `json:"quantity" gorm:"default:0"` // для красок — граммы
 	Price    string `json:"price"`
 	Comment  string `json:"comment"`
+	Color    string `json:"color"` // hex-цвет для красок, напр. "#B8926A"
 }
 
 type CreateSupplyRequest struct {
@@ -83,4 +84,5 @@ type CreateSupplyRequest struct {
 	Quantity int    `json:"quantity"`
 	Price    string `json:"price"`
 	Comment  string `json:"comment"`
+	Color    string `json:"color"`
 }
