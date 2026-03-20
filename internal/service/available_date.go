@@ -32,3 +32,11 @@ func (s *AvailableDateService) GetByRange(startDate, endDate string) ([]model.Av
 func (s *AvailableDateService) IsAvailable(date string) (bool, error) {
 	return s.repo.IsAvailable(date)
 }
+
+func (s *AvailableDateService) CloseDate(date string) error {
+	return s.repo.CloseDate(date)
+}
+
+func (s *AvailableDateService) OpenDate(date string) error {
+	return s.repo.OpenDate(date)
+}

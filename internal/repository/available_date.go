@@ -2,7 +2,6 @@ package repository
 
 import (
 	"barber-backend/internal/model"
-
 	"gorm.io/gorm"
 )
 
@@ -30,13 +29,23 @@ func (r *AvailableDateRepository) GetAll() ([]model.AvailableDate, error) {
 
 func (r *AvailableDateRepository) GetByRange(startDate, endDate string) ([]model.AvailableDate, error) {
 	var dates []model.AvailableDate
-	err := r.db.Where("date >= ? AND date <= ?", startDate, endDate).
-		Order("date ASC").Find(&dates).Error
+	err := r.db.Where("date >= ? AND date <= ?", startDate, endDate).Order("date ASC").Find(&dates).Error
 	return dates, err
 }
 
 func (r *AvailableDateRepository) IsAvailable(date string) (bool, error) {
-	var count int64
-	err := r.db.Model(&model.AvailableDate{}).Where("date = ?", date).Count(&count).Error
-	return count > 0, err
+	var d model.AvailableDate
+	err := r.db.Where("date = ? AND closed = false", date).First(&d).Error
+	if err == gorm.ErrRecordNotFound {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (r *AvailableDateRepository) CloseDate(date string) error {
+	return r.db.Model(&model.AvailableDate{}).Where("date = ?", date).Update("closed", true).Error
+}
+
+func (r *AvailableDateRepository) OpenDate(date string) error {
+	return r.db.Model(&model.AvailableDate{}).Where("date = ?", date).Update("closed", false).Error
 }

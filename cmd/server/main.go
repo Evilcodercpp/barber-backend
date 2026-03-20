@@ -41,6 +41,8 @@ func main() {
 		&model.Appointment{},
 		&model.Service{},
 		&model.AvailableDate{},
+		&model.Client{},
+		&model.Supply{},
 	); err != nil {
 		log.Fatal("Ошибка миграции:", err)
 	}
@@ -50,21 +52,24 @@ func main() {
 	aptRepo := repository.NewAppointmentRepository(db)
 	svcRepo := repository.NewServiceRepository(db)
 	dateRepo := repository.NewAvailableDateRepository(db)
+	clientRepo := repository.NewClientRepository(db)
+	supplyRepo := repository.NewSupplyRepository(db)
 
 	// Services
 	aptSvc := service.NewAppointmentService(aptRepo, dateRepo)
 	svcSvc := service.NewServiceService(svcRepo)
 	dateSvc := service.NewAvailableDateService(dateRepo)
+	clientSvc := service.NewClientService(clientRepo)
+	supplySvc := service.NewSupplyService(supplyRepo)
 
-	// Seed default services
+	// Seed
 	if err := svcSvc.SeedDefaults(); err != nil {
-		log.Println("Ошибка при заполнении услуг:", err)
+		log.Println("Ошибка seed:", err)
 	}
 
 	// Handler
-	h := handler.NewHandler(aptSvc, svcSvc, dateSvc)
+	h := handler.NewHandler(aptSvc, svcSvc, dateSvc, clientSvc, supplySvc)
 
-	// Echo
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())

@@ -2,7 +2,6 @@ package repository
 
 import (
 	"barber-backend/internal/model"
-
 	"gorm.io/gorm"
 )
 
@@ -27,17 +26,8 @@ func (r *AppointmentRepository) GetByDate(date string) ([]model.Appointment, err
 func (r *AppointmentRepository) GetByDateRange(startDate, endDate string) ([]model.Appointment, error) {
 	var appointments []model.Appointment
 	err := r.db.Where("date >= ? AND date <= ?", startDate, endDate).
-		Order("date ASC, time ASC").
-		Find(&appointments).Error
+		Order("date ASC, time ASC").Find(&appointments).Error
 	return appointments, err
-}
-
-func (r *AppointmentRepository) GetBookedSlots(date string) ([]string, error) {
-	var times []string
-	err := r.db.Model(&model.Appointment{}).
-		Where("date = ?", date).
-		Pluck("time", &times).Error
-	return times, err
 }
 
 func (r *AppointmentRepository) GetAll() ([]model.Appointment, error) {
