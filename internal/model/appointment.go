@@ -34,6 +34,7 @@ type UpdateAppointmentRequest struct {
 	Date         string `json:"date"`
 	Time         string `json:"time"`
 	Service      string `json:"service"`
+	DurationMin  int    `json:"duration_min"`
 	Status       string `json:"status"`
 	Price        int    `json:"price"`
 	Tips         int    `json:"tips"`

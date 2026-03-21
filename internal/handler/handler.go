@@ -1,8 +1,13 @@
 package handler
 
 import (
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"time"
 
 	"barber-backend/internal/model"
 	"barber-backend/internal/repository"
@@ -45,6 +50,7 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.GET("/appointments", h.GetAppointmentsByDate)
 	api.GET("/appointments/range", h.GetAppointmentsByRange)
 	api.GET("/appointments/slots", h.GetBookedSlots)
+	api.GET("/appointments/available-slots", h.GetAvailableSlots)
 	api.GET("/appointments/all", h.GetAllAppointments)
 	api.GET("/appointments/by-contact", h.GetByContact)
 	api.PATCH("/appointments/:id", h.UpdateAppointment)
@@ -58,7 +64,10 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.DELETE("/services/:id", h.DeleteService)
 	api.GET("/services/:id/supplies", h.GetServiceSupplies)
 	api.POST("/services/:id/supplies", h.AddServiceSupply)
+	api.PATCH("/services/:id/supplies/:sid", h.UpdateServiceSupply)
 	api.DELETE("/services/:id/supplies/:sid", h.DeleteServiceSupply)
+
+	api.POST("/upload", h.UploadFile)
 
 	api.GET("/dates", h.GetAvailableDates)
 	api.GET("/dates/range", h.GetAvailableDatesByRange)
@@ -117,6 +126,22 @@ func (h *Handler) GetAppointmentsByRange(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, m(err.Error()))
 	}
 	return c.JSON(http.StatusOK, data)
+}
+
+func (h *Handler) GetAvailableSlots(c echo.Context) error {
+	date := c.QueryParam("date")
+	if date == "" {
+		return c.JSON(http.StatusBadRequest, m("date обязателен"))
+	}
+	duration := 60
+	if d, err := strconv.Atoi(c.QueryParam("duration")); err == nil && d > 0 {
+		duration = d
+	}
+	result, err := h.aptSvc.GetAvailableSlots(date, duration)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) GetBookedSlots(c echo.Context) error {
@@ -270,6 +295,23 @@ func (h *Handler) AddServiceSupply(c echo.Context) error {
 	return c.JSON(http.StatusCreated, ss)
 }
 
+func (h *Handler) UpdateServiceSupply(c echo.Context) error {
+	sid := parseID(c.Param("sid"))
+	if sid == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	var body struct {
+		Quantity int `json:"quantity"`
+	}
+	if err := c.Bind(&body); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	if err := h.svcSupplyRepo.UpdateQuantity(sid, body.Quantity); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"id": sid, "quantity": body.Quantity})
+}
+
 func (h *Handler) DeleteServiceSupply(c echo.Context) error {
 	sid := parseID(c.Param("sid"))
 	if sid == 0 {
@@ -279,6 +321,34 @@ func (h *Handler) DeleteServiceSupply(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, m(err.Error()))
 	}
 	return c.JSON(http.StatusOK, m("Удалено"))
+}
+
+func (h *Handler) UploadFile(c echo.Context) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, m("Нет файла"))
+	}
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m("Ошибка открытия"))
+	}
+	defer src.Close()
+
+	os.MkdirAll("/tmp/uploads", 0755)
+	ext := filepath.Ext(file.Filename)
+	if ext == "" {
+		ext = ".jpg"
+	}
+	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	dst, err := os.Create("/tmp/uploads/" + filename)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m("Ошибка сохранения"))
+	}
+	defer dst.Close()
+	if _, err = io.Copy(dst, src); err != nil {
+		return c.JSON(http.StatusInternalServerError, m("Ошибка записи"))
+	}
+	return c.JSON(http.StatusOK, map[string]string{"url": "/uploads/" + filename})
 }
 
 // ==================== Dates ====================

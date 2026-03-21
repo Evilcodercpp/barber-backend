@@ -82,6 +82,7 @@ func main() {
 	}))
 
 	h.RegisterRoutes(e)
+	e.Static("/uploads", "/tmp/uploads")
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"status": "ok"})

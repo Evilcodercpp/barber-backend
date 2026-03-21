@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -136,6 +135,9 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 	if req.Service != "" {
 		apt.Service = req.Service
 	}
+	if req.DurationMin > 0 {
+		apt.DurationMin = req.DurationMin
+	}
 	if req.Price > 0 {
 		apt.Price = req.Price
 	}
@@ -143,6 +145,33 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 	apt.Rent = req.Rent
 	if req.SuppliesUsed != "" {
 		apt.SuppliesUsed = req.SuppliesUsed
+	}
+
+	// Проверка конфликтов при изменении времени, даты или длительности
+	if req.Time != "" || req.Date != "" || req.DurationMin > 0 {
+		existing, err := s.repo.GetByDate(apt.Date)
+		if err == nil {
+			newStart := timeToMinutes(apt.Time)
+			newDur := apt.DurationMin
+			if newDur <= 0 {
+				newDur = 60
+			}
+			newEnd := newStart + newDur
+			for _, other := range existing {
+				if other.ID == apt.ID || other.Status == "cancelled" {
+					continue
+				}
+				otherStart := timeToMinutes(other.Time)
+				otherDur := other.DurationMin
+				if otherDur <= 0 {
+					otherDur = 60
+				}
+				otherEnd := otherStart + otherDur
+				if newStart < otherEnd && newEnd > otherStart {
+					return nil, fmt.Errorf("пересечение с записью в %s (%s)", other.Time, other.Service)
+				}
+			}
+		}
 	}
 
 	if err := s.repo.Update(apt); err != nil {
@@ -191,15 +220,38 @@ func (s *AppointmentService) deductSupplies(apt *model.Appointment) {
 	}
 }
 
-func (s *AppointmentService) GetBookedSlots(date string) ([]string, error) {
+// AvailableSlotsResponse — список доступных слотов для клиента
+type AvailableSlotsResponse struct {
+	Slots     []string `json:"slots"`
+	WorkStart string   `json:"work_start"`
+	WorkEnd   string   `json:"work_end"`
+}
+
+// GetAvailableSlots возвращает доступные временные слоты с шагом 30 минут,
+// учитывая рабочее время мастера и уже занятые интервалы.
+func (s *AppointmentService) GetAvailableSlots(date string, durationMin int) (*AvailableSlotsResponse, error) {
+	if durationMin <= 0 {
+		durationMin = 60
+	}
+
+	workStart, workEnd := "10:00", "19:00"
+
+	dateInfo, err := s.dateRepo.GetByDate(date)
+	if err == nil {
+		workStart = dateInfo.WorkStart
+		workEnd = dateInfo.WorkEnd
+		if dateInfo.Closed {
+			return &AvailableSlotsResponse{Slots: []string{}, WorkStart: workStart, WorkEnd: workEnd}, nil
+		}
+	}
+
 	existing, err := s.repo.GetByDate(date)
 	if err != nil {
 		return nil, err
 	}
 
-	bookedSet := make(map[string]bool)
-	allSlots := generateSlots()
-
+	type interval struct{ start, end int }
+	var occupied []interval
 	for _, apt := range existing {
 		if apt.Status == "cancelled" {
 			continue
@@ -209,22 +261,61 @@ func (s *AppointmentService) GetBookedSlots(date string) ([]string, error) {
 		if aptDur <= 0 {
 			aptDur = 60
 		}
-		aptEnd := aptStart + aptDur
+		occupied = append(occupied, interval{aptStart, aptStart + aptDur})
+	}
 
-		for _, slot := range allSlots {
-			slotMin := timeToMinutes(slot)
-			if slotMin >= aptStart && slotMin < aptEnd {
-				bookedSet[slot] = true
+	wsMin := timeToMinutes(workStart)
+	weMin := timeToMinutes(workEnd)
+
+	var slots []string
+	for m := wsMin; m < weMin; m += 30 {
+		slotEnd := m + durationMin
+		if slotEnd > weMin {
+			break
+		}
+		avail := true
+		for _, o := range occupied {
+			if m < o.end && slotEnd > o.start {
+				avail = false
+				break
 			}
+		}
+		if avail {
+			h := m / 60
+			min := m % 60
+			slots = append(slots, fmt.Sprintf("%02d:%02d", h, min))
 		}
 	}
 
-	var booked []string
-	for slot := range bookedSet {
-		booked = append(booked, slot)
+	if slots == nil {
+		slots = []string{}
 	}
-	sort.Strings(booked)
-	return booked, nil
+	return &AvailableSlotsResponse{Slots: slots, WorkStart: workStart, WorkEnd: workEnd}, nil
+}
+
+// OccupiedSlot — занятый интервал времени
+type OccupiedSlot struct {
+	Time        string `json:"time"`
+	DurationMin int    `json:"duration_min"`
+}
+
+func (s *AppointmentService) GetBookedSlots(date string) ([]OccupiedSlot, error) {
+	existing, err := s.repo.GetByDate(date)
+	if err != nil {
+		return nil, err
+	}
+	var result []OccupiedSlot
+	for _, apt := range existing {
+		if apt.Status == "cancelled" {
+			continue
+		}
+		dur := apt.DurationMin
+		if dur <= 0 {
+			dur = 60
+		}
+		result = append(result, OccupiedSlot{Time: apt.Time, DurationMin: dur})
+	}
+	return result, nil
 }
 
 func (s *AppointmentService) GetByContact(telegram, phone string) ([]model.Appointment, error) {

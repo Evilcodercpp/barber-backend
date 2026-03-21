@@ -50,6 +50,12 @@ func (r *AvailableDateRepository) OpenDate(date string) error {
 	return r.db.Model(&model.AvailableDate{}).Where("date = ?", date).Update("closed", false).Error
 }
 
+func (r *AvailableDateRepository) GetByDate(date string) (*model.AvailableDate, error) {
+	var d model.AvailableDate
+	err := r.db.Where("date = ?", date).First(&d).Error
+	return &d, err
+}
+
 func (r *AvailableDateRepository) UpdateHours(date, workStart, workEnd string) error {
 	return r.db.Model(&model.AvailableDate{}).Where("date = ?", date).Updates(map[string]interface{}{
 		"work_start": workStart,
