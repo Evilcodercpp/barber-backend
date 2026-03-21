@@ -11,6 +11,10 @@ type Appointment struct {
 	DurationMin int       `json:"duration_min" gorm:"default:60"`
 	Date        string    `json:"date" gorm:"not null;index"`
 	Time        string    `json:"time" gorm:"not null"`
+	Status      string    `json:"status" gorm:"default:'active'"`
+	Price       int       `json:"price" gorm:"default:0"`
+	Tips        int       `json:"tips" gorm:"default:0"`
+	Rent        int       `json:"rent" gorm:"default:0"`
 	CreatedAt   time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
@@ -22,6 +26,24 @@ type CreateAppointmentRequest struct {
 	DurationMin int    `json:"duration_min"`
 	Date        string `json:"date"`
 	Time        string `json:"time"`
+	Price       int    `json:"price"`
+}
+
+type UpdateAppointmentRequest struct {
+	Date   string `json:"date"`
+	Time   string `json:"time"`
+	Status string `json:"status"`
+	Price  int    `json:"price"`
+	Tips   int    `json:"tips"`
+	Rent   int    `json:"rent"`
+}
+
+type FinanceSummary struct {
+	Appointments []Appointment `json:"appointments"`
+	TotalRevenue int           `json:"total_revenue"`
+	TotalTips    int           `json:"total_tips"`
+	TotalRent    int           `json:"total_rent"`
+	Profit       int           `json:"profit"`
 }
 
 type Service struct {
@@ -71,10 +93,10 @@ type Supply struct {
 	Type     string `json:"type" gorm:"not null;index"` // "paint" или "material"
 	Brand    string `json:"brand" gorm:"not null"`
 	Name     string `json:"name" gorm:"not null"`
-	Quantity int    `json:"quantity" gorm:"default:0"` // для красок — граммы
+	Quantity int    `json:"quantity" gorm:"default:0"`
 	Price    string `json:"price"`
 	Comment  string `json:"comment"`
-	Color    string `json:"color"` // hex-цвет для красок, напр. "#B8926A"
+	Color    string `json:"color"`
 }
 
 type CreateSupplyRequest struct {

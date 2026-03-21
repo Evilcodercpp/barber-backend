@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,12 +13,17 @@ import (
 )
 
 type AppointmentService struct {
-	repo     *repository.AppointmentRepository
-	dateRepo *repository.AvailableDateRepository
+	repo       *repository.AppointmentRepository
+	dateRepo   *repository.AvailableDateRepository
+	clientRepo *repository.ClientRepository
 }
 
-func NewAppointmentService(repo *repository.AppointmentRepository, dateRepo *repository.AvailableDateRepository) *AppointmentService {
-	return &AppointmentService{repo: repo, dateRepo: dateRepo}
+func NewAppointmentService(
+	repo *repository.AppointmentRepository,
+	dateRepo *repository.AvailableDateRepository,
+	clientRepo *repository.ClientRepository,
+) *AppointmentService {
+	return &AppointmentService{repo: repo, dateRepo: dateRepo, clientRepo: clientRepo}
 }
 
 func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentRequest) (*model.Appointment, error) {
@@ -36,7 +42,6 @@ func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentReques
 		return nil, errors.New("мастер не работает в этот день")
 	}
 
-	// Проверка пересечения с существующими записями
 	existing, err := s.repo.GetByDate(req.Date)
 	if err != nil {
 		return nil, err
@@ -51,13 +56,15 @@ func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentReques
 	newEnd := newStart + durationMin
 
 	for _, apt := range existing {
+		if apt.Status == "cancelled" {
+			continue
+		}
 		aptStart := timeToMinutes(apt.Time)
 		aptDur := apt.DurationMin
 		if aptDur <= 0 {
 			aptDur = 60
 		}
 		aptEnd := aptStart + aptDur
-
 		if newStart < aptEnd && newEnd > aptStart {
 			return nil, fmt.Errorf("пересечение с записью в %s (%s)", apt.Time, apt.Service)
 		}
@@ -71,15 +78,57 @@ func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentReques
 		DurationMin: durationMin,
 		Date:        req.Date,
 		Time:        req.Time,
+		Status:      "active",
+		Price:       req.Price,
 	}
 
 	if err := s.repo.Create(apt); err != nil {
 		return nil, err
 	}
+
+	// Автоматически добавить клиента в базу
+	s.clientRepo.FindOrCreate(req.ClientName, req.Telegram, req.Phone)
+
 	return apt, nil
 }
 
-// GetBookedSlots возвращает все слоты, занятые с учётом длительности
+func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointmentRequest) (*model.Appointment, error) {
+	apt, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("запись не найдена")
+	}
+
+	if req.Status != "" {
+		validStatuses := map[string]bool{
+			"active": true, "rescheduled": true, "cancelled": true,
+			"late": true, "completed": true,
+		}
+		if !validStatuses[req.Status] {
+			return nil, errors.New("неверный статус")
+		}
+		apt.Status = req.Status
+	}
+	if req.Date != "" {
+		apt.Date = req.Date
+		if apt.Status == "active" {
+			apt.Status = "rescheduled"
+		}
+	}
+	if req.Time != "" {
+		apt.Time = req.Time
+	}
+	if req.Price > 0 {
+		apt.Price = req.Price
+	}
+	apt.Tips = req.Tips
+	apt.Rent = req.Rent
+
+	if err := s.repo.Update(apt); err != nil {
+		return nil, err
+	}
+	return apt, nil
+}
+
 func (s *AppointmentService) GetBookedSlots(date string) ([]string, error) {
 	existing, err := s.repo.GetByDate(date)
 	if err != nil {
@@ -90,6 +139,9 @@ func (s *AppointmentService) GetBookedSlots(date string) ([]string, error) {
 	allSlots := generateSlots()
 
 	for _, apt := range existing {
+		if apt.Status == "cancelled" {
+			continue
+		}
 		aptStart := timeToMinutes(apt.Time)
 		aptDur := apt.DurationMin
 		if aptDur <= 0 {
@@ -113,6 +165,27 @@ func (s *AppointmentService) GetBookedSlots(date string) ([]string, error) {
 	return booked, nil
 }
 
+func (s *AppointmentService) GetByContact(telegram, phone string) ([]model.Appointment, error) {
+	return s.repo.GetByContact(telegram, phone)
+}
+
+func (s *AppointmentService) GetFinanceSummary(startDate, endDate string) (*model.FinanceSummary, error) {
+	appointments, err := s.repo.GetCompletedByDateRange(startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	summary := &model.FinanceSummary{Appointments: appointments}
+	for _, apt := range appointments {
+		summary.TotalRevenue += apt.Price
+		summary.TotalTips += apt.Tips
+		summary.TotalRent += apt.Rent
+	}
+	summary.Profit = summary.TotalRevenue + summary.TotalTips - summary.TotalRent
+
+	return summary, nil
+}
+
 func (s *AppointmentService) GetByDate(date string) ([]model.Appointment, error) {
 	return s.repo.GetByDate(date)
 }
@@ -128,8 +201,6 @@ func (s *AppointmentService) GetAll() ([]model.Appointment, error) {
 func (s *AppointmentService) Delete(id uint) error {
 	return s.repo.Delete(id)
 }
-
-// Вспомогательные функции
 
 func timeToMinutes(t string) int {
 	parts := strings.Split(t, ":")
@@ -150,4 +221,15 @@ func generateSlots() []string {
 		}
 	}
 	return slots
+}
+
+// ParsePrice parses "4 500 ₽" -> 4500
+func ParsePrice(priceStr string) int {
+	re := regexp.MustCompile(`\d+`)
+	nums := re.FindAllString(priceStr, -1)
+	if len(nums) == 0 {
+		return 0
+	}
+	result, _ := strconv.Atoi(strings.Join(nums, ""))
+	return result
 }

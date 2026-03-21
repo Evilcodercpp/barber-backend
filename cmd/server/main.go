@@ -56,7 +56,7 @@ func main() {
 	supplyRepo := repository.NewSupplyRepository(db)
 
 	// Services
-	aptSvc := service.NewAppointmentService(aptRepo, dateRepo)
+	aptSvc := service.NewAppointmentService(aptRepo, dateRepo, clientRepo)
 	svcSvc := service.NewServiceService(svcRepo)
 	dateSvc := service.NewAvailableDateService(dateRepo)
 	clientSvc := service.NewClientService(clientRepo)

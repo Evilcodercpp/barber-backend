@@ -36,7 +36,11 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.GET("/appointments/range", h.GetAppointmentsByRange)
 	api.GET("/appointments/slots", h.GetBookedSlots)
 	api.GET("/appointments/all", h.GetAllAppointments)
+	api.GET("/appointments/by-contact", h.GetByContact)
+	api.PATCH("/appointments/:id", h.UpdateAppointment)
 	api.DELETE("/appointments/:id", h.DeleteAppointment)
+
+	api.GET("/finance", h.GetFinance)
 
 	api.GET("/services", h.GetServices)
 	api.POST("/services", h.CreateService)
@@ -119,6 +123,44 @@ func (h *Handler) GetAllAppointments(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, m(err.Error()))
 	}
 	return c.JSON(http.StatusOK, data)
+}
+
+func (h *Handler) UpdateAppointment(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	var req model.UpdateAppointmentRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	apt, err := h.aptSvc.UpdateAppointment(id, req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, apt)
+}
+
+func (h *Handler) GetByContact(c echo.Context) error {
+	telegram := c.QueryParam("telegram")
+	phone := c.QueryParam("phone")
+	data, err := h.aptSvc.GetByContact(telegram, phone)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, data)
+}
+
+func (h *Handler) GetFinance(c echo.Context) error {
+	start, end := c.QueryParam("start"), c.QueryParam("end")
+	if start == "" || end == "" {
+		return c.JSON(http.StatusBadRequest, m("start и end обязательны"))
+	}
+	summary, err := h.aptSvc.GetFinanceSummary(start, end)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, summary)
 }
 
 func (h *Handler) DeleteAppointment(c echo.Context) error {
