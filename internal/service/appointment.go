@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -13,17 +14,30 @@ import (
 )
 
 type AppointmentService struct {
-	repo       *repository.AppointmentRepository
-	dateRepo   *repository.AvailableDateRepository
-	clientRepo *repository.ClientRepository
+	repo            *repository.AppointmentRepository
+	dateRepo        *repository.AvailableDateRepository
+	clientRepo      *repository.ClientRepository
+	svcRepo         *repository.ServiceRepository
+	svcSupplyRepo   *repository.ServiceSupplyRepository
+	supplyRepo      *repository.SupplyRepository
 }
 
 func NewAppointmentService(
 	repo *repository.AppointmentRepository,
 	dateRepo *repository.AvailableDateRepository,
 	clientRepo *repository.ClientRepository,
+	svcRepo *repository.ServiceRepository,
+	svcSupplyRepo *repository.ServiceSupplyRepository,
+	supplyRepo *repository.SupplyRepository,
 ) *AppointmentService {
-	return &AppointmentService{repo: repo, dateRepo: dateRepo, clientRepo: clientRepo}
+	return &AppointmentService{
+		repo:          repo,
+		dateRepo:      dateRepo,
+		clientRepo:    clientRepo,
+		svcRepo:       svcRepo,
+		svcSupplyRepo: svcSupplyRepo,
+		supplyRepo:    supplyRepo,
+	}
 }
 
 func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentRequest) (*model.Appointment, error) {
@@ -98,6 +112,8 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 		return nil, errors.New("запись не найдена")
 	}
 
+	wasCompleted := apt.Status == "completed"
+
 	if req.Status != "" {
 		validStatuses := map[string]bool{
 			"active": true, "rescheduled": true, "cancelled": true,
@@ -117,16 +133,62 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 	if req.Time != "" {
 		apt.Time = req.Time
 	}
+	if req.Service != "" {
+		apt.Service = req.Service
+	}
 	if req.Price > 0 {
 		apt.Price = req.Price
 	}
 	apt.Tips = req.Tips
 	apt.Rent = req.Rent
+	if req.SuppliesUsed != "" {
+		apt.SuppliesUsed = req.SuppliesUsed
+	}
 
 	if err := s.repo.Update(apt); err != nil {
 		return nil, err
 	}
+
+	// Списать расходники при завершении (только если до этого не было completed)
+	if !wasCompleted && apt.Status == "completed" {
+		s.deductSupplies(apt)
+	}
+
 	return apt, nil
+}
+
+// deductSupplies списывает расходники после завершения записи
+func (s *AppointmentService) deductSupplies(apt *model.Appointment) {
+	// Если в записи есть ручные данные о расходниках — используем их
+	if apt.SuppliesUsed != "" {
+		var usedList []struct {
+			SupplyID uint `json:"supply_id"`
+			Quantity int  `json:"quantity"`
+		}
+		if err := json.Unmarshal([]byte(apt.SuppliesUsed), &usedList); err == nil {
+			for _, u := range usedList {
+				if u.SupplyID > 0 && u.Quantity > 0 {
+					s.supplyRepo.DeductQuantity(u.SupplyID, u.Quantity)
+				}
+			}
+			return
+		}
+	}
+
+	// Иначе — используем шаблон услуги
+	svc, err := s.svcRepo.GetByName(apt.Service)
+	if err != nil {
+		return
+	}
+	template, err := s.svcSupplyRepo.GetByServiceIDRaw(svc.ID)
+	if err != nil {
+		return
+	}
+	for _, t := range template {
+		if t.Quantity > 0 {
+			s.supplyRepo.DeductQuantity(t.SupplyID, t.Quantity)
+		}
+	}
 }
 
 func (s *AppointmentService) GetBookedSlots(date string) ([]string, error) {

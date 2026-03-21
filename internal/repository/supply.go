@@ -36,3 +36,15 @@ func (r *SupplyRepository) Update(s *model.Supply) error {
 func (r *SupplyRepository) Delete(id uint) error {
 	return r.db.Delete(&model.Supply{}, id).Error
 }
+
+func (r *SupplyRepository) GetByID(id uint) (*model.Supply, error) {
+	var s model.Supply
+	if err := r.db.First(&s, id).Error; err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *SupplyRepository) DeductQuantity(id uint, qty int) {
+	r.db.Model(&model.Supply{}).Where("id = ?", id).UpdateColumn("quantity", gorm.Expr("quantity - ?", qty))
+}

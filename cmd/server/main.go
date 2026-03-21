@@ -43,6 +43,7 @@ func main() {
 		&model.AvailableDate{},
 		&model.Client{},
 		&model.Supply{},
+		&model.ServiceSupply{},
 	); err != nil {
 		log.Fatal("Ошибка миграции:", err)
 	}
@@ -54,9 +55,10 @@ func main() {
 	dateRepo := repository.NewAvailableDateRepository(db)
 	clientRepo := repository.NewClientRepository(db)
 	supplyRepo := repository.NewSupplyRepository(db)
+	svcSupplyRepo := repository.NewServiceSupplyRepository(db)
 
 	// Services
-	aptSvc := service.NewAppointmentService(aptRepo, dateRepo, clientRepo)
+	aptSvc := service.NewAppointmentService(aptRepo, dateRepo, clientRepo, svcRepo, svcSupplyRepo, supplyRepo)
 	svcSvc := service.NewServiceService(svcRepo)
 	dateSvc := service.NewAvailableDateService(dateRepo)
 	clientSvc := service.NewClientService(clientRepo)
@@ -68,14 +70,14 @@ func main() {
 	}
 
 	// Handler
-	h := handler.NewHandler(aptSvc, svcSvc, dateSvc, clientSvc, supplySvc)
+	h := handler.NewHandler(aptSvc, svcSvc, dateSvc, clientSvc, supplySvc, svcSupplyRepo)
 
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
-		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders: []string{"Content-Type", "Authorization"},
 	}))
 

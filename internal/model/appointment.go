@@ -3,19 +3,20 @@ package model
 import "time"
 
 type Appointment struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	ClientName  string    `json:"client_name" gorm:"not null"`
-	Telegram    string    `json:"telegram"`
-	Phone       string    `json:"phone"`
-	Service     string    `json:"service" gorm:"not null"`
-	DurationMin int       `json:"duration_min" gorm:"default:60"`
-	Date        string    `json:"date" gorm:"not null;index"`
-	Time        string    `json:"time" gorm:"not null"`
-	Status      string    `json:"status" gorm:"default:'active'"`
-	Price       int       `json:"price" gorm:"default:0"`
-	Tips        int       `json:"tips" gorm:"default:0"`
-	Rent        int       `json:"rent" gorm:"default:0"`
-	CreatedAt   time.Time `json:"created_at" gorm:"autoCreateTime"`
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	ClientName   string    `json:"client_name" gorm:"not null"`
+	Telegram     string    `json:"telegram"`
+	Phone        string    `json:"phone"`
+	Service      string    `json:"service" gorm:"not null"`
+	DurationMin  int       `json:"duration_min" gorm:"default:60"`
+	Date         string    `json:"date" gorm:"not null;index"`
+	Time         string    `json:"time" gorm:"not null"`
+	Status       string    `json:"status" gorm:"default:'active'"`
+	Price        int       `json:"price" gorm:"default:0"`
+	Tips         int       `json:"tips" gorm:"default:0"`
+	Rent         int       `json:"rent" gorm:"default:0"`
+	SuppliesUsed string    `json:"supplies_used" gorm:"type:text"`
+	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
 type CreateAppointmentRequest struct {
@@ -30,12 +31,14 @@ type CreateAppointmentRequest struct {
 }
 
 type UpdateAppointmentRequest struct {
-	Date   string `json:"date"`
-	Time   string `json:"time"`
-	Status string `json:"status"`
-	Price  int    `json:"price"`
-	Tips   int    `json:"tips"`
-	Rent   int    `json:"rent"`
+	Date         string `json:"date"`
+	Time         string `json:"time"`
+	Service      string `json:"service"`
+	Status       string `json:"status"`
+	Price        int    `json:"price"`
+	Tips         int    `json:"tips"`
+	Rent         int    `json:"rent"`
+	SuppliesUsed string `json:"supplies_used"`
 }
 
 type FinanceSummary struct {
@@ -54,6 +57,8 @@ type Service struct {
 	Price       string `json:"price" gorm:"not null"`
 	Category    string `json:"category" gorm:"default:'general'"`
 	SortOrder   int    `json:"sort_order" gorm:"default:0"`
+	Description string `json:"description" gorm:"type:text"`
+	Photos      string `json:"photos" gorm:"type:text"` // JSON array of URLs: ["url1","url2"]
 }
 
 type CreateServiceRequest struct {
@@ -62,6 +67,16 @@ type CreateServiceRequest struct {
 	DurationMin int    `json:"duration_min"`
 	Price       string `json:"price"`
 	Category    string `json:"category"`
+	Description string `json:"description"`
+	Photos      string `json:"photos"`
+}
+
+// ServiceSupply — шаблон расходников для услуги
+type ServiceSupply struct {
+	ID        uint `json:"id" gorm:"primaryKey"`
+	ServiceID uint `json:"service_id" gorm:"not null;index"`
+	SupplyID  uint `json:"supply_id" gorm:"not null"`
+	Quantity  int  `json:"quantity" gorm:"default:0"`
 }
 
 type AvailableDate struct {
@@ -107,4 +122,12 @@ type CreateSupplyRequest struct {
 	Price    string `json:"price"`
 	Comment  string `json:"comment"`
 	Color    string `json:"color"`
+}
+
+// ServiceSupplyWithInfo — расходник шаблона с деталями
+type ServiceSupplyWithInfo struct {
+	ServiceSupply
+	SupplyBrand string `json:"supply_brand"`
+	SupplyName  string `json:"supply_name"`
+	SupplyType  string `json:"supply_type"`
 }

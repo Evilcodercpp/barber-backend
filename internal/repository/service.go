@@ -37,3 +37,11 @@ func (r *ServiceRepository) Count() (int64, error) {
 	err := r.db.Model(&model.Service{}).Count(&count).Error
 	return count, err
 }
+
+func (r *ServiceRepository) GetByName(name string) (*model.Service, error) {
+	var svc model.Service
+	if err := r.db.Where("name = ?", name).First(&svc).Error; err != nil {
+		return nil, err
+	}
+	return &svc, nil
+}

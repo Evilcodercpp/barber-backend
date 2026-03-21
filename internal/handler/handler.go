@@ -5,17 +5,19 @@ import (
 	"strconv"
 
 	"barber-backend/internal/model"
+	"barber-backend/internal/repository"
 	"barber-backend/internal/service"
 
 	"github.com/labstack/echo/v4"
 )
 
 type Handler struct {
-	aptSvc    *service.AppointmentService
-	svcSvc    *service.ServiceService
-	dateSvc   *service.AvailableDateService
-	clientSvc *service.ClientService
-	supplySvc *service.SupplyService
+	aptSvc        *service.AppointmentService
+	svcSvc        *service.ServiceService
+	dateSvc       *service.AvailableDateService
+	clientSvc     *service.ClientService
+	supplySvc     *service.SupplyService
+	svcSupplyRepo *repository.ServiceSupplyRepository
 }
 
 func NewHandler(
@@ -24,8 +26,16 @@ func NewHandler(
 	dateSvc *service.AvailableDateService,
 	clientSvc *service.ClientService,
 	supplySvc *service.SupplyService,
+	svcSupplyRepo *repository.ServiceSupplyRepository,
 ) *Handler {
-	return &Handler{aptSvc: aptSvc, svcSvc: svcSvc, dateSvc: dateSvc, clientSvc: clientSvc, supplySvc: supplySvc}
+	return &Handler{
+		aptSvc:        aptSvc,
+		svcSvc:        svcSvc,
+		dateSvc:       dateSvc,
+		clientSvc:     clientSvc,
+		supplySvc:     supplySvc,
+		svcSupplyRepo: svcSupplyRepo,
+	}
 }
 
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
@@ -46,6 +56,9 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.POST("/services", h.CreateService)
 	api.PUT("/services/:id", h.UpdateService)
 	api.DELETE("/services/:id", h.DeleteService)
+	api.GET("/services/:id/supplies", h.GetServiceSupplies)
+	api.POST("/services/:id/supplies", h.AddServiceSupply)
+	api.DELETE("/services/:id/supplies/:sid", h.DeleteServiceSupply)
 
 	api.GET("/dates", h.GetAvailableDates)
 	api.GET("/dates/range", h.GetAvailableDatesByRange)
@@ -218,6 +231,50 @@ func (h *Handler) DeleteService(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
 	}
 	if err := h.svcSvc.Delete(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, m("Удалено"))
+}
+
+// ==================== Service Supplies ====================
+
+func (h *Handler) GetServiceSupplies(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	data, err := h.svcSupplyRepo.GetByServiceID(id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, data)
+}
+
+func (h *Handler) AddServiceSupply(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	var body struct {
+		SupplyID uint `json:"supply_id"`
+		Quantity int  `json:"quantity"`
+	}
+	if err := c.Bind(&body); err != nil || body.SupplyID == 0 {
+		return c.JSON(http.StatusBadRequest, m("supply_id и quantity обязательны"))
+	}
+	ss := &model.ServiceSupply{ServiceID: id, SupplyID: body.SupplyID, Quantity: body.Quantity}
+	if err := h.svcSupplyRepo.Create(ss); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusCreated, ss)
+}
+
+func (h *Handler) DeleteServiceSupply(c echo.Context) error {
+	sid := parseID(c.Param("sid"))
+	if sid == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	if err := h.svcSupplyRepo.Delete(sid); err != nil {
 		return c.JSON(http.StatusInternalServerError, m(err.Error()))
 	}
 	return c.JSON(http.StatusOK, m("Удалено"))

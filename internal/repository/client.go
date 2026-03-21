@@ -31,19 +31,42 @@ func (r *ClientRepository) Delete(id uint) error {
 	return r.db.Delete(&model.Client{}, id).Error
 }
 
-// FindOrCreate — добавляет клиента в базу если его ещё нет (по telegram или phone)
+// FindOrCreate — добавляет клиента в базу, если нет — или дополняет существующего новыми данными
 func (r *ClientRepository) FindOrCreate(name, telegram, phone string) {
 	var existing model.Client
-	query := r.db
+	found := false
+
+	// Ищем по Telegram
 	if telegram != "" {
-		query = query.Where("telegram = ?", telegram)
-	} else if phone != "" {
-		query = query.Where("phone = ?", phone)
-	} else {
+		if err := r.db.Where("telegram = ?", telegram).First(&existing).Error; err == nil {
+			found = true
+		}
+	}
+
+	// Если не нашли по Telegram — ищем по телефону
+	if !found && phone != "" {
+		if err := r.db.Where("phone = ?", phone).First(&existing).Error; err == nil {
+			found = true
+		}
+	}
+
+	if found {
+		// Дополняем существующую запись новыми данными (не перезаписываем старые)
+		changed := false
+		if existing.Telegram == "" && telegram != "" {
+			existing.Telegram = telegram
+			changed = true
+		}
+		if existing.Phone == "" && phone != "" {
+			existing.Phone = phone
+			changed = true
+		}
+		if changed {
+			r.db.Save(&existing)
+		}
 		return
 	}
-	if err := query.First(&existing).Error; err == nil {
-		return // уже существует
-	}
+
+	// Создаём нового клиента
 	r.db.Create(&model.Client{Name: name, Telegram: telegram, Phone: phone})
 }
