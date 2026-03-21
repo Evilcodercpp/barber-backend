@@ -40,3 +40,7 @@ func (s *AvailableDateService) CloseDate(date string) error {
 func (s *AvailableDateService) OpenDate(date string) error {
 	return s.repo.OpenDate(date)
 }
+
+func (s *AvailableDateService) UpdateHours(date, workStart, workEnd string) error {
+	return s.repo.UpdateHours(date, workStart, workEnd)
+}

@@ -67,6 +67,7 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.DELETE("/dates/:date", h.RemoveAvailableDate)
 	api.POST("/dates/close", h.CloseDate)
 	api.POST("/dates/open", h.OpenDate)
+	api.PATCH("/dates/:date", h.UpdateDateHours)
 
 	api.GET("/clients", h.GetClients)
 	api.POST("/clients", h.CreateClient)
@@ -331,6 +332,24 @@ func (h *Handler) RemoveAvailableDate(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, m(err.Error()))
 	}
 	return c.JSON(http.StatusOK, m("Дата удалена"))
+}
+
+func (h *Handler) UpdateDateHours(c echo.Context) error {
+	date := c.Param("date")
+	if date == "" {
+		return c.JSON(http.StatusBadRequest, m("date обязателен"))
+	}
+	var body struct {
+		WorkStart string `json:"work_start"`
+		WorkEnd   string `json:"work_end"`
+	}
+	if err := c.Bind(&body); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	if err := h.dateSvc.UpdateHours(date, body.WorkStart, body.WorkEnd); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, map[string]string{"date": date, "work_start": body.WorkStart, "work_end": body.WorkEnd})
 }
 
 func (h *Handler) CloseDate(c echo.Context) error {

@@ -49,3 +49,10 @@ func (r *AvailableDateRepository) CloseDate(date string) error {
 func (r *AvailableDateRepository) OpenDate(date string) error {
 	return r.db.Model(&model.AvailableDate{}).Where("date = ?", date).Update("closed", false).Error
 }
+
+func (r *AvailableDateRepository) UpdateHours(date, workStart, workEnd string) error {
+	return r.db.Model(&model.AvailableDate{}).Where("date = ?", date).Updates(map[string]interface{}{
+		"work_start": workStart,
+		"work_end":   workEnd,
+	}).Error
+}

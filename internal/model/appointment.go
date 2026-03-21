@@ -80,9 +80,11 @@ type ServiceSupply struct {
 }
 
 type AvailableDate struct {
-	ID     uint   `json:"id" gorm:"primaryKey"`
-	Date   string `json:"date" gorm:"not null;uniqueIndex"`
-	Closed bool   `json:"closed" gorm:"default:false"`
+	ID        uint   `json:"id" gorm:"primaryKey"`
+	Date      string `json:"date" gorm:"not null;uniqueIndex"`
+	Closed    bool   `json:"closed" gorm:"default:false"`
+	WorkStart string `json:"work_start" gorm:"default:'10:00'"`
+	WorkEnd   string `json:"work_end" gorm:"default:'19:00'"`
 }
 
 // Client — база клиентов мастера
