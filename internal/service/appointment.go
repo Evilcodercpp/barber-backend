@@ -143,6 +143,7 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 	}
 	apt.Tips = req.Tips
 	apt.Rent = req.Rent
+	apt.LateMin = req.LateMin
 	if req.SuppliesUsed != "" {
 		apt.SuppliesUsed = req.SuppliesUsed
 	}

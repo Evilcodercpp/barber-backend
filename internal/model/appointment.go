@@ -15,6 +15,7 @@ type Appointment struct {
 	Price        int       `json:"price" gorm:"default:0"`
 	Tips         int       `json:"tips" gorm:"default:0"`
 	Rent         int       `json:"rent" gorm:"default:0"`
+	LateMin      int       `json:"late_min" gorm:"default:0"`
 	SuppliesUsed string    `json:"supplies_used" gorm:"type:text"`
 	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
@@ -39,6 +40,7 @@ type UpdateAppointmentRequest struct {
 	Price        int    `json:"price"`
 	Tips         int    `json:"tips"`
 	Rent         int    `json:"rent"`
+	LateMin      int    `json:"late_min"`
 	SuppliesUsed string `json:"supplies_used"`
 }
 
