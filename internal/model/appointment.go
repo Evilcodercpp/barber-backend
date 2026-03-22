@@ -76,10 +76,10 @@ type CreateServiceRequest struct {
 
 // ServiceSupply — шаблон расходников для услуги
 type ServiceSupply struct {
-	ID        uint `json:"id" gorm:"primaryKey"`
-	ServiceID uint `json:"service_id" gorm:"not null;index"`
-	SupplyID  uint `json:"supply_id" gorm:"not null"`
-	Quantity  int  `json:"quantity" gorm:"default:0"`
+	ID        uint    `json:"id" gorm:"primaryKey"`
+	ServiceID uint    `json:"service_id" gorm:"not null;index"`
+	SupplyID  uint    `json:"supply_id" gorm:"not null"`
+	Quantity  float64 `json:"quantity" gorm:"type:real;default:0"`
 }
 
 type AvailableDate struct {
@@ -109,24 +109,31 @@ type CreateClientRequest struct {
 
 // Supply — расходники (краски и материалы)
 type Supply struct {
-	ID       uint   `json:"id" gorm:"primaryKey"`
-	Type     string `json:"type" gorm:"not null;index"` // "paint" или "material"
-	Brand    string `json:"brand" gorm:"not null"`
-	Name     string `json:"name" gorm:"not null"`
-	Quantity int    `json:"quantity" gorm:"default:0"`
-	Price    string `json:"price"`
-	Comment  string `json:"comment"`
-	Color    string `json:"color"`
+	ID            uint    `json:"id" gorm:"primaryKey"`
+	Type          string  `json:"type" gorm:"not null;index"` // "paint" или "material"
+	Brand         string  `json:"brand" gorm:"not null"`
+	Name          string  `json:"name" gorm:"not null"`
+	Quantity      float64 `json:"quantity" gorm:"type:real;default:0"` // остаток (г/шт)
+	Price         string  `json:"price"`                               // legacy
+	Unit          string  `json:"unit" gorm:"default:'gram'"`          // "gram" или "piece"
+	QuantityGrams float64 `json:"quantity_grams" gorm:"type:real;default:0"` // кол-во при закупке
+	TotalCost     float64 `json:"total_cost" gorm:"type:real;default:0"`     // стоимость закупки
+	CostPerUnit   float64 `json:"cost_per_unit" gorm:"-"`                    // вычисляемое
+	Comment       string  `json:"comment"`
+	Color         string  `json:"color"`
 }
 
 type CreateSupplyRequest struct {
-	Type     string `json:"type"`
-	Brand    string `json:"brand"`
-	Name     string `json:"name"`
-	Quantity int    `json:"quantity"`
-	Price    string `json:"price"`
-	Comment  string `json:"comment"`
-	Color    string `json:"color"`
+	Type          string  `json:"type"`
+	Brand         string  `json:"brand"`
+	Name          string  `json:"name"`
+	Quantity      float64 `json:"quantity"`
+	Price         string  `json:"price"`
+	Unit          string  `json:"unit"`
+	QuantityGrams float64 `json:"quantity_grams"`
+	TotalCost     float64 `json:"total_cost"`
+	Comment       string  `json:"comment"`
+	Color         string  `json:"color"`
 }
 
 // ServiceSupplyWithInfo — расходник шаблона с деталями

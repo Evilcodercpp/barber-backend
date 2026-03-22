@@ -39,6 +39,15 @@ func NewAppointmentService(
 	}
 }
 
+// ConflictError возвращается при пересечении записей — содержит конфликтующую запись
+type ConflictError struct {
+	ConflictingApt *model.Appointment
+}
+
+func (e *ConflictError) Error() string {
+	return fmt.Sprintf("пересечение с записью в %s (%s)", e.ConflictingApt.Time, e.ConflictingApt.Service)
+}
+
 func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentRequest) (*model.Appointment, error) {
 	if req.ClientName == "" || req.Service == "" || req.Date == "" || req.Time == "" {
 		return nil, errors.New("все поля обязательны")
@@ -79,7 +88,8 @@ func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentReques
 		}
 		aptEnd := aptStart + aptDur
 		if newStart < aptEnd && newEnd > aptStart {
-			return nil, fmt.Errorf("пересечение с записью в %s (%s)", apt.Time, apt.Service)
+			conflict := apt
+			return nil, &ConflictError{ConflictingApt: &conflict}
 		}
 	}
 
@@ -169,7 +179,8 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 				}
 				otherEnd := otherStart + otherDur
 				if newStart < otherEnd && newEnd > otherStart {
-					return nil, fmt.Errorf("пересечение с записью в %s (%s)", other.Time, other.Service)
+					conflict := other
+					return nil, &ConflictError{ConflictingApt: &conflict}
 				}
 			}
 		}
@@ -192,8 +203,8 @@ func (s *AppointmentService) deductSupplies(apt *model.Appointment) {
 	// Если в записи есть ручные данные о расходниках — используем их
 	if apt.SuppliesUsed != "" {
 		var usedList []struct {
-			SupplyID uint `json:"supply_id"`
-			Quantity int  `json:"quantity"`
+			SupplyID uint    `json:"supply_id"`
+			Quantity float64 `json:"quantity"`
 		}
 		if err := json.Unmarshal([]byte(apt.SuppliesUsed), &usedList); err == nil {
 			for _, u := range usedList {
@@ -354,6 +365,50 @@ func (s *AppointmentService) GetAll() ([]model.Appointment, error) {
 
 func (s *AppointmentService) Delete(id uint) error {
 	return s.repo.Delete(id)
+}
+
+// SetLate отмечает опоздание клиента. При shiftTime=true сдвигает время начала и проверяет конфликты.
+func (s *AppointmentService) SetLate(id uint, lateMin int, shiftTime bool) (*model.Appointment, error) {
+	apt, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, errors.New("запись не найдена")
+	}
+
+	apt.LateMin = lateMin
+	apt.Status = "late"
+
+	if shiftTime {
+		newMinutes := timeToMinutes(apt.Time) + lateMin
+		apt.Time = fmt.Sprintf("%02d:%02d", newMinutes/60, newMinutes%60)
+
+		existing, err := s.repo.GetByDate(apt.Date)
+		if err == nil {
+			newStart := timeToMinutes(apt.Time)
+			newEnd := newStart + apt.DurationMin
+			if newEnd <= newStart {
+				newEnd = newStart + 60
+			}
+			for _, other := range existing {
+				if other.ID == apt.ID || other.Status == "cancelled" {
+					continue
+				}
+				otherStart := timeToMinutes(other.Time)
+				otherDur := other.DurationMin
+				if otherDur <= 0 {
+					otherDur = 60
+				}
+				if newStart < otherStart+otherDur && newEnd > otherStart {
+					conflict := other
+					return nil, &ConflictError{ConflictingApt: &conflict}
+				}
+			}
+		}
+	}
+
+	if err := s.repo.Update(apt); err != nil {
+		return nil, err
+	}
+	return apt, nil
 }
 
 func timeToMinutes(t string) int {

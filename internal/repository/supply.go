@@ -45,6 +45,6 @@ func (r *SupplyRepository) GetByID(id uint) (*model.Supply, error) {
 	return &s, nil
 }
 
-func (r *SupplyRepository) DeductQuantity(id uint, qty int) {
+func (r *SupplyRepository) DeductQuantity(id uint, qty float64) {
 	r.db.Model(&model.Supply{}).Where("id = ?", id).UpdateColumn("quantity", gorm.Expr("quantity - ?", qty))
 }

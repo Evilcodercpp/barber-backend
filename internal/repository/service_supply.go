@@ -42,6 +42,6 @@ func (r *ServiceSupplyRepository) DeleteByServiceID(serviceID uint) error {
 	return r.db.Where("service_id = ?", serviceID).Delete(&model.ServiceSupply{}).Error
 }
 
-func (r *ServiceSupplyRepository) UpdateQuantity(id uint, quantity int) error {
+func (r *ServiceSupplyRepository) UpdateQuantity(id uint, quantity float64) error {
 	return r.db.Model(&model.ServiceSupply{}).Where("id = ?", id).Update("quantity", quantity).Error
 }

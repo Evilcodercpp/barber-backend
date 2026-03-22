@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -54,6 +55,7 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.GET("/appointments/all", h.GetAllAppointments)
 	api.GET("/appointments/by-contact", h.GetByContact)
 	api.PATCH("/appointments/:id", h.UpdateAppointment)
+	api.PATCH("/appointments/:id/late", h.SetLate)
 	api.DELETE("/appointments/:id", h.DeleteAppointment)
 
 	api.GET("/finance", h.GetFinance)
@@ -99,6 +101,13 @@ func (h *Handler) CreateAppointment(c echo.Context) error {
 	}
 	apt, err := h.aptSvc.CreateAppointment(req)
 	if err != nil {
+		var ce *service.ConflictError
+		if errors.As(err, &ce) {
+			return c.JSON(http.StatusConflict, map[string]interface{}{
+				"error":    err.Error(),
+				"conflict": ce.ConflictingApt,
+			})
+		}
 		return c.JSON(http.StatusConflict, m(err.Error()))
 	}
 	return c.JSON(http.StatusCreated, apt)
@@ -175,6 +184,39 @@ func (h *Handler) UpdateAppointment(c echo.Context) error {
 	}
 	apt, err := h.aptSvc.UpdateAppointment(id, req)
 	if err != nil {
+		var ce *service.ConflictError
+		if errors.As(err, &ce) {
+			return c.JSON(http.StatusConflict, map[string]interface{}{
+				"error":    err.Error(),
+				"conflict": ce.ConflictingApt,
+			})
+		}
+		return c.JSON(http.StatusBadRequest, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, apt)
+}
+
+func (h *Handler) SetLate(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	var body struct {
+		LateMinutes int  `json:"late_minutes"`
+		ShiftTime   bool `json:"shift_time"`
+	}
+	if err := c.Bind(&body); err != nil || body.LateMinutes <= 0 {
+		return c.JSON(http.StatusBadRequest, m("late_minutes обязателен и должен быть > 0"))
+	}
+	apt, err := h.aptSvc.SetLate(id, body.LateMinutes, body.ShiftTime)
+	if err != nil {
+		var ce *service.ConflictError
+		if errors.As(err, &ce) {
+			return c.JSON(http.StatusConflict, map[string]interface{}{
+				"error":    err.Error(),
+				"conflict": ce.ConflictingApt,
+			})
+		}
 		return c.JSON(http.StatusBadRequest, m(err.Error()))
 	}
 	return c.JSON(http.StatusOK, apt)
@@ -282,8 +324,8 @@ func (h *Handler) AddServiceSupply(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
 	}
 	var body struct {
-		SupplyID uint `json:"supply_id"`
-		Quantity int  `json:"quantity"`
+		SupplyID uint    `json:"supply_id"`
+		Quantity float64 `json:"quantity"`
 	}
 	if err := c.Bind(&body); err != nil || body.SupplyID == 0 {
 		return c.JSON(http.StatusBadRequest, m("supply_id и quantity обязательны"))
@@ -301,7 +343,7 @@ func (h *Handler) UpdateServiceSupply(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
 	}
 	var body struct {
-		Quantity int `json:"quantity"`
+		Quantity float64 `json:"quantity"`
 	}
 	if err := c.Bind(&body); err != nil {
 		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
