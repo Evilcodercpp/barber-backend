@@ -16,11 +16,15 @@ type Appointment struct {
 	Tips         int       `json:"tips" gorm:"default:0"`
 	Rent         int       `json:"rent" gorm:"default:0"`
 	LateMin      int       `json:"late_min" gorm:"default:0"`
-	SuppliesUsed string    `json:"supplies_used" gorm:"type:text"` // JSON: []SupplyUsedItem
-	SupplyCost   int       `json:"supply_cost" gorm:"default:0"`   // себестоимость расходников (руб), рассчитывается при завершении
-	Comment      string    `json:"comment" gorm:"type:text"`
-	ReminderSent bool      `json:"reminder_sent" gorm:"default:false"`
-	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
+	SuppliesUsed  string    `json:"supplies_used" gorm:"type:text"` // JSON: []SupplyUsedItem
+	SupplyCost    int       `json:"supply_cost" gorm:"default:0"`   // себестоимость расходников (руб), рассчитывается при завершении
+	Comment       string    `json:"comment" gorm:"type:text"`
+	ReminderSent  bool      `json:"reminder_sent" gorm:"default:false"`
+	PaymentStatus string    `json:"payment_status" gorm:"default:'paid'"` // paid / unpaid / partial
+	PaymentDate   string    `json:"payment_date"`                          // дата оплаты (если отличается от date)
+	PaidAmount    int       `json:"paid_amount" gorm:"default:0"`          // оплачено по факту (для partial)
+	PaymentMethod string    `json:"payment_method" gorm:"default:'cash'"`  // cash / card / transfer
+	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
 // SupplyUsedItem — одна позиция расходника, использованного в записи.
@@ -42,17 +46,21 @@ type CreateAppointmentRequest struct {
 }
 
 type UpdateAppointmentRequest struct {
-	Date         string `json:"date"`
-	Time         string `json:"time"`
-	Service      string `json:"service"`
-	DurationMin  int    `json:"duration_min"`
-	Status       string `json:"status"`
-	Price        int    `json:"price"`
-	Tips         int    `json:"tips"`
-	Rent         int    `json:"rent"`
-	LateMin      int    `json:"late_min"`
-	SuppliesUsed string `json:"supplies_used"`
-	Comment      string `json:"comment"`
+	Date          string `json:"date"`
+	Time          string `json:"time"`
+	Service       string `json:"service"`
+	DurationMin   int    `json:"duration_min"`
+	Status        string `json:"status"`
+	Price         int    `json:"price"`
+	Tips          int    `json:"tips"`
+	Rent          int    `json:"rent"`
+	LateMin       int    `json:"late_min"`
+	SuppliesUsed  string `json:"supplies_used"`
+	Comment       string `json:"comment"`
+	PaymentStatus string `json:"payment_status"`
+	PaymentDate   string `json:"payment_date"`
+	PaidAmount    int    `json:"paid_amount"`
+	PaymentMethod string `json:"payment_method"`
 }
 
 type FinanceSummary struct {
@@ -104,19 +112,55 @@ type AvailableDate struct {
 
 // Client — база клиентов мастера
 type Client struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	Name      string    `json:"name" gorm:"not null"`
-	Telegram  string    `json:"telegram"`
-	Phone     string    `json:"phone"`
-	Comment   string    `json:"comment"`
-	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	Name         string    `json:"name" gorm:"not null"`
+	Telegram     string    `json:"telegram"`
+	Phone        string    `json:"phone"`
+	Comment      string    `json:"comment"`
+	HairType     string    `json:"hair_type"`
+	ColorFormula string    `json:"color_formula" gorm:"type:text"` // JSON: [{brand,name,shade,percent}]
+	Allergies    string    `json:"allergies"`
+	BirthDate    string    `json:"birth_date"`
+	Tags         string    `json:"tags"`   // JSON array of strings
+	Source       string    `json:"source"` // откуда пришёл
+	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
 type CreateClientRequest struct {
-	Name     string `json:"name"`
-	Telegram string `json:"telegram"`
-	Phone    string `json:"phone"`
-	Comment  string `json:"comment"`
+	Name         string `json:"name"`
+	Telegram     string `json:"telegram"`
+	Phone        string `json:"phone"`
+	Comment      string `json:"comment"`
+	HairType     string `json:"hair_type"`
+	ColorFormula string `json:"color_formula"`
+	Allergies    string `json:"allergies"`
+	BirthDate    string `json:"birth_date"`
+	Tags         string `json:"tags"`
+	Source       string `json:"source"`
+}
+
+// ClientCard — карточка клиента с вычисляемой статистикой
+type ClientCard struct {
+	Client
+	TotalVisits     int    `json:"total_visits"`
+	TotalSpent      int    `json:"total_spent"`
+	LastVisit       string `json:"last_visit"`
+	AverageCheck    int    `json:"average_check"`
+	FavoriteService string `json:"favorite_service"`
+}
+
+// WaitlistEntry — запись в листе ожидания (только для мастера)
+type WaitlistEntry struct {
+	ID         uint      `json:"id" gorm:"primaryKey"`
+	ClientName string    `json:"client_name" gorm:"not null"`
+	Telegram   string    `json:"telegram"`
+	Phone      string    `json:"phone"`
+	Date       string    `json:"date" gorm:"not null;index"`
+	Time       string    `json:"time"` // желаемое время, "" = любое
+	Service    string    `json:"service"`
+	Comment    string    `json:"comment" gorm:"type:text"`
+	Status     string    `json:"status" gorm:"default:'waiting'"` // waiting/notified/booked/declined
+	CreatedAt  time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
 // Supply — расходники (краски и материалы)

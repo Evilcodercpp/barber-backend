@@ -24,7 +24,9 @@ type Handler struct {
 	dateSvc       *service.AvailableDateService
 	clientSvc     *service.ClientService
 	supplySvc     *service.SupplyService
+	waitlistSvc   *service.WaitlistService
 	svcSupplyRepo *repository.ServiceSupplyRepository
+	aptRepo       *repository.AppointmentRepository
 	notifier      *notify.Notifier
 }
 
@@ -34,7 +36,9 @@ func NewHandler(
 	dateSvc *service.AvailableDateService,
 	clientSvc *service.ClientService,
 	supplySvc *service.SupplyService,
+	waitlistSvc *service.WaitlistService,
 	svcSupplyRepo *repository.ServiceSupplyRepository,
+	aptRepo *repository.AppointmentRepository,
 	notifier *notify.Notifier,
 ) *Handler {
 	return &Handler{
@@ -43,7 +47,9 @@ func NewHandler(
 		dateSvc:       dateSvc,
 		clientSvc:     clientSvc,
 		supplySvc:     supplySvc,
+		waitlistSvc:   waitlistSvc,
 		svcSupplyRepo: svcSupplyRepo,
+		aptRepo:       aptRepo,
 		notifier:      notifier,
 	}
 }
@@ -67,11 +73,18 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.GET("/appointments/available-slots", h.GetAvailableSlots)
 	api.GET("/appointments/all", h.GetAllAppointments)
 	api.GET("/appointments/by-contact", h.GetByContact)
+	api.GET("/appointments/unpaid", h.GetUnpaid)
 	api.PATCH("/appointments/:id", h.UpdateAppointment)
 	api.PATCH("/appointments/:id/late", h.SetLate)
 	api.DELETE("/appointments/:id", h.DeleteAppointment)
 
 	api.GET("/finance", h.GetFinance)
+
+	api.GET("/waitlist", h.GetWaitlist)
+	api.POST("/waitlist", h.CreateWaitlistEntry)
+	api.PATCH("/waitlist/:id", h.UpdateWaitlistStatus)
+	api.DELETE("/waitlist/:id", h.DeleteWaitlistEntry)
+	api.GET("/waitlist/count", h.GetWaitlistCount)
 
 	api.GET("/services", h.GetServices)
 	api.POST("/services", h.CreateService)
@@ -95,6 +108,7 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 
 	api.GET("/clients", h.GetClients)
 	api.POST("/clients", h.CreateClient)
+	api.GET("/clients/:id/card", h.GetClientCard)
 	api.PUT("/clients/:id", h.UpdateClient)
 	api.DELETE("/clients/:id", h.DeleteClient)
 
@@ -296,11 +310,20 @@ func (h *Handler) GetFinance(c echo.Context) error {
 	if start == "" || end == "" {
 		return c.JSON(http.StatusBadRequest, m("start и end обязательны"))
 	}
-	summary, err := h.aptSvc.GetFinanceSummary(start, end)
+	mode := c.QueryParam("mode") // "accrual" (default) or "cash"
+	summary, err := h.aptSvc.GetFinanceSummary(start, end, mode)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, m(err.Error()))
 	}
 	return c.JSON(http.StatusOK, summary)
+}
+
+func (h *Handler) GetUnpaid(c echo.Context) error {
+	apts, err := h.aptSvc.GetUnpaid()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, apts)
 }
 
 func (h *Handler) DeleteAppointment(c echo.Context) error {
@@ -696,6 +719,111 @@ func (h *Handler) RestockSupply(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, m(err.Error()))
 	}
 	return c.JSON(http.StatusOK, supply)
+}
+
+// ==================== Waitlist ====================
+
+func (h *Handler) GetWaitlist(c echo.Context) error {
+	entries, err := h.waitlistSvc.GetAll()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, entries)
+}
+
+func (h *Handler) CreateWaitlistEntry(c echo.Context) error {
+	var req model.WaitlistEntry
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	entry, err := h.waitlistSvc.Create(req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, m(err.Error()))
+	}
+	return c.JSON(http.StatusCreated, entry)
+}
+
+func (h *Handler) UpdateWaitlistStatus(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	var body struct {
+		Status string `json:"status"`
+	}
+	if err := c.Bind(&body); err != nil || body.Status == "" {
+		return c.JSON(http.StatusBadRequest, m("status обязателен"))
+	}
+	if err := h.waitlistSvc.UpdateStatus(id, body.Status); err != nil {
+		return c.JSON(http.StatusBadRequest, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"id": id, "status": body.Status})
+}
+
+func (h *Handler) DeleteWaitlistEntry(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	if err := h.waitlistSvc.Delete(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, m("Удалено"))
+}
+
+// GetWaitlistCount — GET /api/waitlist/count?date=2026-04-01
+func (h *Handler) GetWaitlistCount(c echo.Context) error {
+	date := c.QueryParam("date")
+	if date == "" {
+		return c.JSON(http.StatusBadRequest, m("date обязателен"))
+	}
+	count, err := h.waitlistSvc.CountWaiting(date)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, map[string]int64{"count": count})
+}
+
+// ==================== Client Card ====================
+
+func (h *Handler) GetClientCard(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	client, err := h.clientSvc.GetByID(id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, m("Клиент не найден"))
+	}
+
+	// Получаем историю визитов по контакту
+	apts, _ := h.aptSvc.GetByContact(client.Telegram, client.Phone)
+	if len(apts) == 0 && client.Name != "" {
+		apts, _ = h.aptRepo.GetByClientName(client.Name)
+	}
+
+	card := model.ClientCard{Client: *client}
+	svcCount := map[string]int{}
+	for _, a := range apts {
+		if a.Status != "completed" {
+			continue
+		}
+		card.TotalVisits++
+		card.TotalSpent += a.Price + a.Tips
+		if card.LastVisit == "" || a.Date > card.LastVisit {
+			card.LastVisit = a.Date
+		}
+		svcCount[a.Service]++
+	}
+	if card.TotalVisits > 0 {
+		card.AverageCheck = card.TotalSpent / card.TotalVisits
+	}
+	for svc, cnt := range svcCount {
+		if cnt > svcCount[card.FavoriteService] {
+			card.FavoriteService = svc
+		}
+	}
+	return c.JSON(http.StatusOK, card)
 }
 
 // Helpers

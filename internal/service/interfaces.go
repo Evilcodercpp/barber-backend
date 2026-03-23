@@ -10,6 +10,8 @@ type appointmentRepo interface {
 	GetByDate(date string) ([]model.Appointment, error)
 	GetByDateRange(startDate, endDate string) ([]model.Appointment, error)
 	GetCompletedByDateRange(startDate, endDate string) ([]model.Appointment, error)
+	GetCompletedByPaymentDate(startDate, endDate string) ([]model.Appointment, error)
+	GetUnpaid() ([]model.Appointment, error)
 	GetAll() ([]model.Appointment, error)
 	GetByContact(telegram, phone string) ([]model.Appointment, error)
 	Delete(id uint) error

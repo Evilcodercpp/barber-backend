@@ -74,6 +74,31 @@ func (r *AppointmentRepository) Delete(id uint) error {
 	return r.db.Delete(&model.Appointment{}, id).Error
 }
 
+// GetByClientName ищет записи по имени клиента (для карточки)
+func (r *AppointmentRepository) GetByClientName(name string) ([]model.Appointment, error) {
+	var appointments []model.Appointment
+	err := r.db.Where("client_name = ?", name).Order("date DESC, time ASC").Find(&appointments).Error
+	return appointments, err
+}
+
+// GetUnpaid возвращает все записи с payment_status = unpaid или partial
+func (r *AppointmentRepository) GetUnpaid() ([]model.Appointment, error) {
+	var appointments []model.Appointment
+	err := r.db.Where("payment_status IN ?", []string{"unpaid", "partial"}).
+		Order("payment_date ASC, date ASC").Find(&appointments).Error
+	return appointments, err
+}
+
+// GetCompletedByPaymentDate возвращает завершённые записи по диапазону даты оплаты
+func (r *AppointmentRepository) GetCompletedByPaymentDate(startDate, endDate string) ([]model.Appointment, error) {
+	var appointments []model.Appointment
+	err := r.db.Where(
+		"payment_status = 'paid' AND COALESCE(NULLIF(payment_date,''), date) >= ? AND COALESCE(NULLIF(payment_date,''), date) <= ?",
+		startDate, endDate,
+	).Order("date ASC, time ASC").Find(&appointments).Error
+	return appointments, err
+}
+
 // GetForReminder возвращает кандидатов на напоминание за ближайшие 3 дня
 // (финальная фильтрация по окну 20-28ч делается в Go)
 func (r *AppointmentRepository) GetForReminder() ([]model.Appointment, error) {

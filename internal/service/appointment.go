@@ -164,6 +164,18 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 	if req.Comment != "" {
 		apt.Comment = req.Comment
 	}
+	if req.PaymentStatus != "" {
+		apt.PaymentStatus = req.PaymentStatus
+	}
+	if req.PaymentDate != "" {
+		apt.PaymentDate = req.PaymentDate
+	}
+	if req.PaidAmount > 0 {
+		apt.PaidAmount = req.PaidAmount
+	}
+	if req.PaymentMethod != "" {
+		apt.PaymentMethod = req.PaymentMethod
+	}
 
 	// Проверка конфликтов при изменении времени, даты или длительности
 	if req.Time != "" || req.Date != "" || req.DurationMin > 0 {
@@ -369,8 +381,14 @@ func (s *AppointmentService) GetByContact(telegram, phone string) ([]model.Appoi
 	return s.repo.GetByContact(telegram, phone)
 }
 
-func (s *AppointmentService) GetFinanceSummary(startDate, endDate string) (*model.FinanceSummary, error) {
-	appointments, err := s.repo.GetCompletedByDateRange(startDate, endDate)
+func (s *AppointmentService) GetFinanceSummary(startDate, endDate, mode string) (*model.FinanceSummary, error) {
+	var appointments []model.Appointment
+	var err error
+	if mode == "cash" {
+		appointments, err = s.repo.GetCompletedByPaymentDate(startDate, endDate)
+	} else {
+		appointments, err = s.repo.GetCompletedByDateRange(startDate, endDate)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -385,6 +403,11 @@ func (s *AppointmentService) GetFinanceSummary(startDate, endDate string) (*mode
 	summary.Profit = summary.TotalRevenue + summary.TotalTips - summary.TotalRent - summary.TotalSupplyCost
 
 	return summary, nil
+}
+
+// GetUnpaid возвращает все неоплаченные и частично оплаченные записи
+func (s *AppointmentService) GetUnpaid() ([]model.Appointment, error) {
+	return s.repo.GetUnpaid()
 }
 
 func (s *AppointmentService) GetByID(id uint) (*model.Appointment, error) {

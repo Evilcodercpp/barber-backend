@@ -17,6 +17,14 @@ func (r *ClientRepository) Create(c *model.Client) error {
 	return r.db.Create(c).Error
 }
 
+func (r *ClientRepository) GetByID(id uint) (*model.Client, error) {
+	var c model.Client
+	if err := r.db.First(&c, id).Error; err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 func (r *ClientRepository) GetAll() ([]model.Client, error) {
 	var clients []model.Client
 	err := r.db.Order("created_at DESC").Find(&clients).Error

@@ -20,15 +20,25 @@ func (s *ClientService) Create(req model.CreateClientRequest) (*model.Client, er
 		return nil, errors.New("имя обязательно")
 	}
 	c := &model.Client{
-		Name:     req.Name,
-		Telegram: req.Telegram,
-		Phone:    req.Phone,
-		Comment:  req.Comment,
+		Name:         req.Name,
+		Telegram:     req.Telegram,
+		Phone:        req.Phone,
+		Comment:      req.Comment,
+		HairType:     req.HairType,
+		ColorFormula: req.ColorFormula,
+		Allergies:    req.Allergies,
+		BirthDate:    req.BirthDate,
+		Tags:         req.Tags,
+		Source:       req.Source,
 	}
 	if err := s.repo.Create(c); err != nil {
 		return nil, err
 	}
 	return c, nil
+}
+
+func (s *ClientService) GetByID(id uint) (*model.Client, error) {
+	return s.repo.GetByID(id)
 }
 
 func (s *ClientService) GetAll() ([]model.Client, error) {
