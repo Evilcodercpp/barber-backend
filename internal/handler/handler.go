@@ -103,6 +103,8 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.POST("/supplies", h.CreateSupply)
 	api.PUT("/supplies/:id", h.UpdateSupply)
 	api.DELETE("/supplies/:id", h.DeleteSupply)
+
+	api.POST("/admin/reseed-services", h.ReseedServices)
 }
 
 // ==================== Appointments ====================
@@ -218,15 +220,24 @@ func (h *Handler) UpdateAppointment(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, m(err.Error()))
 	}
 
-	// Отправляем уведомление при смене статуса
-	if oldApt != nil && apt.Status != oldApt.Status {
+	// Отправляем уведомление при смене статуса или даты/времени
+	if oldApt != nil {
 		comment := h.clientComment(apt.Telegram, apt.Phone)
-		switch apt.Status {
-		case "cancelled":
-			go h.notifier.NotifyCancelled(apt, comment)
-		case "completed":
-			go h.notifier.NotifyCompleted(apt)
-		case "rescheduled":
+		statusChanged := apt.Status != oldApt.Status
+		dateOrTimeChanged := apt.Date != oldApt.Date || apt.Time != oldApt.Time
+
+		if statusChanged {
+			switch apt.Status {
+			case "cancelled":
+				go h.notifier.NotifyCancelled(apt, comment)
+			case "completed":
+				go h.notifier.NotifyCompleted(apt)
+			case "rescheduled":
+				go h.notifier.NotifyRescheduled(apt, oldApt.Date, oldApt.Time, comment)
+			case "late":
+				go h.notifier.NotifyLate(apt, apt.LateMin)
+			}
+		} else if dateOrTimeChanged && apt.Status == "rescheduled" {
 			go h.notifier.NotifyRescheduled(apt, oldApt.Date, oldApt.Time, comment)
 		}
 	}
@@ -297,6 +308,13 @@ func (h *Handler) DeleteAppointment(c echo.Context) error {
 }
 
 // ==================== Services ====================
+
+func (h *Handler) ReseedServices(c echo.Context) error {
+	if err := h.svcSvc.SeedDefaults(); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "ok", "message": "услуги обновлены"})
+}
 
 func (h *Handler) GetServices(c echo.Context) error {
 	data, err := h.svcSvc.GetAll()
