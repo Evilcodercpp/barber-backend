@@ -47,14 +47,6 @@ func (s *ServiceService) Delete(id uint) error {
 }
 
 func (s *ServiceService) SeedDefaults() error {
-	count, err := s.repo.Count()
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-
 	defaults := []model.Service{
 		{Name: "Окрашивание корней", Duration: "~90 мин", DurationMin: 90, Price: "4 500 ₽", Category: "color", SortOrder: 1,
 			Description: "Точечная работа с отросшими корнями: насыщенный, стойкий цвет без ущерба для длины. Результат — однородный тон от корней до кончиков."},
@@ -89,8 +81,23 @@ func (s *ServiceService) SeedDefaults() error {
 	}
 
 	for i := range defaults {
-		if err := s.repo.Create(&defaults[i]); err != nil {
-			return err
+		existing, err := s.repo.GetByName(defaults[i].Name)
+		if err != nil {
+			// не найдена — создаём
+			if err := s.repo.Create(&defaults[i]); err != nil {
+				return err
+			}
+		} else {
+			// найдена — обновляем
+			existing.Duration = defaults[i].Duration
+			existing.DurationMin = defaults[i].DurationMin
+			existing.Price = defaults[i].Price
+			existing.Category = defaults[i].Category
+			existing.SortOrder = defaults[i].SortOrder
+			existing.Description = defaults[i].Description
+			if err := s.repo.Update(existing); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
