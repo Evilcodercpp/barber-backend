@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"barber-backend/internal/model"
+	"barber-backend/internal/notify"
 	"barber-backend/internal/repository"
 	"barber-backend/internal/service"
 
@@ -24,6 +25,7 @@ type Handler struct {
 	clientSvc     *service.ClientService
 	supplySvc     *service.SupplyService
 	svcSupplyRepo *repository.ServiceSupplyRepository
+	notifier      *notify.Notifier
 }
 
 func NewHandler(
@@ -33,6 +35,7 @@ func NewHandler(
 	clientSvc *service.ClientService,
 	supplySvc *service.SupplyService,
 	svcSupplyRepo *repository.ServiceSupplyRepository,
+	notifier *notify.Notifier,
 ) *Handler {
 	return &Handler{
 		aptSvc:        aptSvc,
@@ -41,7 +44,17 @@ func NewHandler(
 		clientSvc:     clientSvc,
 		supplySvc:     supplySvc,
 		svcSupplyRepo: svcSupplyRepo,
+		notifier:      notifier,
 	}
+}
+
+// clientComment — возвращает комментарий мастера о клиенте из базы клиентов
+func (h *Handler) clientComment(telegram, phone string) string {
+	c := h.clientSvc.FindByContact(telegram, phone)
+	if c == nil {
+		return ""
+	}
+	return c.Comment
 }
 
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
@@ -110,6 +123,13 @@ func (h *Handler) CreateAppointment(c echo.Context) error {
 		}
 		return c.JSON(http.StatusConflict, m(err.Error()))
 	}
+
+	// Определяем: новый клиент или постоянный
+	allByContact, _ := h.aptSvc.GetByContact(apt.Telegram, apt.Phone)
+	isNew := len(allByContact) <= 1
+	comment := h.clientComment(apt.Telegram, apt.Phone)
+	go h.notifier.NotifyNewBooking(apt, isNew, comment)
+
 	return c.JSON(http.StatusCreated, apt)
 }
 
@@ -182,6 +202,10 @@ func (h *Handler) UpdateAppointment(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
 	}
+
+	// Сохраняем состояние до обновления для уведомления
+	oldApt, _ := h.aptSvc.GetByID(id)
+
 	apt, err := h.aptSvc.UpdateAppointment(id, req)
 	if err != nil {
 		var ce *service.ConflictError
@@ -193,6 +217,20 @@ func (h *Handler) UpdateAppointment(c echo.Context) error {
 		}
 		return c.JSON(http.StatusBadRequest, m(err.Error()))
 	}
+
+	// Отправляем уведомление при смене статуса
+	if oldApt != nil && apt.Status != oldApt.Status {
+		comment := h.clientComment(apt.Telegram, apt.Phone)
+		switch apt.Status {
+		case "cancelled":
+			go h.notifier.NotifyCancelled(apt, comment)
+		case "completed":
+			go h.notifier.NotifyCompleted(apt)
+		case "rescheduled":
+			go h.notifier.NotifyRescheduled(apt, oldApt.Date, oldApt.Time, comment)
+		}
+	}
+
 	return c.JSON(http.StatusOK, apt)
 }
 
@@ -219,6 +257,9 @@ func (h *Handler) SetLate(c echo.Context) error {
 		}
 		return c.JSON(http.StatusBadRequest, m(err.Error()))
 	}
+
+	go h.notifier.NotifyLate(apt, body.LateMinutes)
+
 	return c.JSON(http.StatusOK, apt)
 }
 

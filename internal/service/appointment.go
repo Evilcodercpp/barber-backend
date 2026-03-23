@@ -157,6 +157,9 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 	if req.SuppliesUsed != "" {
 		apt.SuppliesUsed = req.SuppliesUsed
 	}
+	if req.Comment != "" {
+		apt.Comment = req.Comment
+	}
 
 	// Проверка конфликтов при изменении времени, даты или длительности
 	if req.Time != "" || req.Date != "" || req.DurationMin > 0 {
@@ -349,6 +352,10 @@ func (s *AppointmentService) GetFinanceSummary(startDate, endDate string) (*mode
 	summary.Profit = summary.TotalRevenue + summary.TotalTips - summary.TotalRent
 
 	return summary, nil
+}
+
+func (s *AppointmentService) GetByID(id uint) (*model.Appointment, error) {
+	return s.repo.GetByID(id)
 }
 
 func (s *AppointmentService) GetByDate(date string) ([]model.Appointment, error) {

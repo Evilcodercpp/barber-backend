@@ -7,6 +7,7 @@ import (
 
 	"barber-backend/internal/handler"
 	"barber-backend/internal/model"
+	"barber-backend/internal/notify"
 	"barber-backend/internal/repository"
 	"barber-backend/internal/service"
 
@@ -69,8 +70,16 @@ func main() {
 		log.Println("Ошибка seed:", err)
 	}
 
+	// Notifier
+	tgNotifier := notify.NewNotifier()
+	if tgNotifier.Enabled() {
+		log.Println("Telegram уведомления: включены")
+	} else {
+		log.Println("Telegram уведомления: выключены (TELEGRAM_BOT_TOKEN или TELEGRAM_MASTER_CHAT_ID не заданы)")
+	}
+
 	// Handler
-	h := handler.NewHandler(aptSvc, svcSvc, dateSvc, clientSvc, supplySvc, svcSupplyRepo)
+	h := handler.NewHandler(aptSvc, svcSvc, dateSvc, clientSvc, supplySvc, svcSupplyRepo, tgNotifier)
 
 	e := echo.New()
 	e.Use(middleware.Logger())

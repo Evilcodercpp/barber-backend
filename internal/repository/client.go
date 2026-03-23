@@ -31,6 +31,22 @@ func (r *ClientRepository) Delete(id uint) error {
 	return r.db.Delete(&model.Client{}, id).Error
 }
 
+// FindByContact — находит клиента по telegram или телефону
+func (r *ClientRepository) FindByContact(telegram, phone string) *model.Client {
+	var c model.Client
+	if telegram != "" {
+		if err := r.db.Where("telegram = ?", telegram).First(&c).Error; err == nil {
+			return &c
+		}
+	}
+	if phone != "" {
+		if err := r.db.Where("phone = ?", phone).First(&c).Error; err == nil {
+			return &c
+		}
+	}
+	return nil
+}
+
 // FindOrCreate — добавляет клиента в базу, если нет — или дополняет существующего новыми данными
 func (r *ClientRepository) FindOrCreate(name, telegram, phone string) {
 	var existing model.Client

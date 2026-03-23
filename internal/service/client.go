@@ -42,3 +42,8 @@ func (s *ClientService) Update(c *model.Client) error {
 func (s *ClientService) Delete(id uint) error {
 	return s.repo.Delete(id)
 }
+
+// FindByContact — возвращает клиента по telegram или телефону (для уведомлений)
+func (s *ClientService) FindByContact(telegram, phone string) *model.Client {
+	return s.repo.FindByContact(telegram, phone)
+}
