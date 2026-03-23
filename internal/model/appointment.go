@@ -16,10 +16,18 @@ type Appointment struct {
 	Tips         int       `json:"tips" gorm:"default:0"`
 	Rent         int       `json:"rent" gorm:"default:0"`
 	LateMin      int       `json:"late_min" gorm:"default:0"`
-	SuppliesUsed  string    `json:"supplies_used" gorm:"type:text"`
-	Comment       string    `json:"comment" gorm:"type:text"`
-	ReminderSent  bool      `json:"reminder_sent" gorm:"default:false"`
-	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
+	SuppliesUsed string    `json:"supplies_used" gorm:"type:text"` // JSON: []SupplyUsedItem
+	SupplyCost   int       `json:"supply_cost" gorm:"default:0"`   // себестоимость расходников (руб), рассчитывается при завершении
+	Comment      string    `json:"comment" gorm:"type:text"`
+	ReminderSent bool      `json:"reminder_sent" gorm:"default:false"`
+	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
+}
+
+// SupplyUsedItem — одна позиция расходника, использованного в записи.
+// Хранится в поле SuppliesUsed как JSON-массив.
+type SupplyUsedItem struct {
+	SupplyID uint    `json:"supply_id"`
+	Quantity float64 `json:"quantity"` // в тех же единицах, что Supply.Unit (граммы или штуки)
 }
 
 type CreateAppointmentRequest struct {
@@ -48,11 +56,12 @@ type UpdateAppointmentRequest struct {
 }
 
 type FinanceSummary struct {
-	Appointments []Appointment `json:"appointments"`
-	TotalRevenue int           `json:"total_revenue"`
-	TotalTips    int           `json:"total_tips"`
-	TotalRent    int           `json:"total_rent"`
-	Profit       int           `json:"profit"`
+	Appointments    []Appointment `json:"appointments"`
+	TotalRevenue    int           `json:"total_revenue"`
+	TotalTips       int           `json:"total_tips"`
+	TotalRent       int           `json:"total_rent"`
+	TotalSupplyCost int           `json:"total_supply_cost"` // суммарная себестоимость расходников
+	Profit          int           `json:"profit"`            // Revenue + Tips - Rent - SupplyCost
 }
 
 type Service struct {
@@ -113,15 +122,18 @@ type CreateClientRequest struct {
 // Supply — расходники (краски и материалы)
 type Supply struct {
 	ID            uint    `json:"id" gorm:"primaryKey"`
-	Type          string  `json:"type" gorm:"not null;index"` // "paint" или "material"
+	Type          string  `json:"type" gorm:"not null;index"`          // "paint" или "material"
 	Brand         string  `json:"brand" gorm:"not null"`
 	Name          string  `json:"name" gorm:"not null"`
-	Quantity      float64 `json:"quantity" gorm:"type:real;default:0"` // остаток (г/шт)
-	Price         string  `json:"price"`                               // legacy
+	Quantity      float64 `json:"quantity" gorm:"type:real;default:0"` // текущий остаток (г/шт)
+	MinQuantity   float64 `json:"min_quantity" gorm:"type:real;default:0"` // порог предупреждения о нехватке
 	Unit          string  `json:"unit" gorm:"default:'gram'"`          // "gram" или "piece"
-	QuantityGrams float64 `json:"quantity_grams" gorm:"type:real;default:0"` // кол-во при закупке
-	TotalCost     float64 `json:"total_cost" gorm:"type:real;default:0"`     // стоимость закупки
-	CostPerUnit   float64 `json:"cost_per_unit" gorm:"-"`                    // вычисляемое
+	// PurchaseQty — количество в упаковке при последней закупке (г/шт)
+	QuantityGrams float64 `json:"quantity_grams" gorm:"type:real;default:0"`
+	TotalCost     float64 `json:"total_cost" gorm:"type:real;default:0"`   // стоимость последней закупки (руб)
+	CostPerUnit   float64 `json:"cost_per_unit" gorm:"-"`                  // руб/г или руб/шт (вычисляется)
+	LowStock      bool    `json:"low_stock" gorm:"-"`                      // true если остаток ≤ min_quantity (вычисляется)
+	Price         string  `json:"price"`                                   // legacy
 	Comment       string  `json:"comment"`
 	Color         string  `json:"color"`
 }
@@ -131,6 +143,7 @@ type CreateSupplyRequest struct {
 	Brand         string  `json:"brand"`
 	Name          string  `json:"name"`
 	Quantity      float64 `json:"quantity"`
+	MinQuantity   float64 `json:"min_quantity"`
 	Price         string  `json:"price"`
 	Unit          string  `json:"unit"`
 	QuantityGrams float64 `json:"quantity_grams"`

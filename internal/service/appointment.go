@@ -13,12 +13,12 @@ import (
 )
 
 type AppointmentService struct {
-	repo            *repository.AppointmentRepository
-	dateRepo        *repository.AvailableDateRepository
-	clientRepo      *repository.ClientRepository
-	svcRepo         *repository.ServiceRepository
-	svcSupplyRepo   *repository.ServiceSupplyRepository
-	supplyRepo      *repository.SupplyRepository
+	repo          appointmentRepo
+	dateRepo      availableDateRepo
+	clientRepo    clientRepo
+	svcRepo       serviceRepo
+	svcSupplyRepo serviceSupplyRepo
+	supplyRepo    supplyRepo
 }
 
 func NewAppointmentService(
@@ -193,11 +193,16 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 		}
 	}
 
+	// Рассчитать и сохранить себестоимость расходников при первом завершении
+	if !wasCompleted && apt.Status == "completed" {
+		apt.SupplyCost = s.computeSupplyCost(apt)
+	}
+
 	if err := s.repo.Update(apt); err != nil {
 		return nil, err
 	}
 
-	// Списать расходники при завершении (только если до этого не было completed)
+	// Списать расходники со склада при первом завершении
 	if !wasCompleted && apt.Status == "completed" {
 		s.deductSupplies(apt)
 	}
@@ -205,37 +210,60 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 	return apt, nil
 }
 
-// deductSupplies списывает расходники после завершения записи
-func (s *AppointmentService) deductSupplies(apt *model.Appointment) {
-	// Если в записи есть ручные данные о расходниках — используем их
+// resolveUsedItems возвращает список расходников для записи:
+// приоритет — ручной список из apt.SuppliesUsed, иначе шаблон услуги.
+func (s *AppointmentService) resolveUsedItems(apt *model.Appointment) []model.SupplyUsedItem {
 	if apt.SuppliesUsed != "" {
-		var usedList []struct {
-			SupplyID uint    `json:"supply_id"`
-			Quantity float64 `json:"quantity"`
-		}
-		if err := json.Unmarshal([]byte(apt.SuppliesUsed), &usedList); err == nil {
-			for _, u := range usedList {
-				if u.SupplyID > 0 && u.Quantity > 0 {
-					s.supplyRepo.DeductQuantity(u.SupplyID, u.Quantity)
+		var items []model.SupplyUsedItem
+		if err := json.Unmarshal([]byte(apt.SuppliesUsed), &items); err == nil {
+			var result []model.SupplyUsedItem
+			for _, it := range items {
+				if it.SupplyID > 0 && it.Quantity > 0 {
+					result = append(result, it)
 				}
 			}
-			return
+			return result
 		}
 	}
 
-	// Иначе — используем шаблон услуги
 	svc, err := s.svcRepo.GetByName(apt.Service)
 	if err != nil {
-		return
+		return nil
 	}
 	template, err := s.svcSupplyRepo.GetByServiceIDRaw(svc.ID)
 	if err != nil {
-		return
+		return nil
 	}
+	var result []model.SupplyUsedItem
 	for _, t := range template {
 		if t.Quantity > 0 {
-			s.supplyRepo.DeductQuantity(t.SupplyID, t.Quantity)
+			result = append(result, model.SupplyUsedItem{SupplyID: t.SupplyID, Quantity: t.Quantity})
 		}
+	}
+	return result
+}
+
+// computeSupplyCost рассчитывает суммарную себестоимость расходников в рублях.
+func (s *AppointmentService) computeSupplyCost(apt *model.Appointment) int {
+	items := s.resolveUsedItems(apt)
+	var total float64
+	for _, it := range items {
+		supply, err := s.supplyRepo.GetByID(it.SupplyID)
+		if err != nil {
+			continue
+		}
+		if supply.QuantityGrams > 0 && supply.TotalCost > 0 {
+			costPerUnit := supply.TotalCost / supply.QuantityGrams
+			total += costPerUnit * it.Quantity
+		}
+	}
+	return int(total + 0.5) // округление
+}
+
+// deductSupplies списывает расходники со склада после завершения записи.
+func (s *AppointmentService) deductSupplies(apt *model.Appointment) {
+	for _, it := range s.resolveUsedItems(apt) {
+		s.supplyRepo.DeductQuantity(it.SupplyID, it.Quantity) //nolint:errcheck — ошибка логируется в repo
 	}
 }
 
@@ -352,8 +380,9 @@ func (s *AppointmentService) GetFinanceSummary(startDate, endDate string) (*mode
 		summary.TotalRevenue += apt.Price
 		summary.TotalTips += apt.Tips
 		summary.TotalRent += apt.Rent
+		summary.TotalSupplyCost += apt.SupplyCost
 	}
-	summary.Profit = summary.TotalRevenue + summary.TotalTips - summary.TotalRent
+	summary.Profit = summary.TotalRevenue + summary.TotalTips - summary.TotalRent - summary.TotalSupplyCost
 
 	return summary, nil
 }

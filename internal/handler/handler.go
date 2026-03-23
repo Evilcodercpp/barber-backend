@@ -99,10 +99,13 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.DELETE("/clients/:id", h.DeleteClient)
 
 	api.GET("/supplies", h.GetSupplies)
+	api.GET("/supplies/search", h.SearchSupplies)
+	api.GET("/supplies/inventory", h.GetInventory)
 	api.GET("/supplies/:type", h.GetSuppliesByType)
 	api.POST("/supplies", h.CreateSupply)
 	api.PUT("/supplies/:id", h.UpdateSupply)
 	api.DELETE("/supplies/:id", h.DeleteSupply)
+	api.POST("/supplies/:id/restock", h.RestockSupply)
 
 	api.POST("/admin/reseed-services", h.ReseedServices)
 }
@@ -654,6 +657,45 @@ func (h *Handler) DeleteSupply(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, m(err.Error()))
 	}
 	return c.JSON(http.StatusOK, m("Удалено"))
+}
+
+// SearchSupplies — GET /api/supplies/search?q=...
+func (h *Handler) SearchSupplies(c echo.Context) error {
+	q := c.QueryParam("q")
+	data, err := h.supplySvc.Search(q)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, data)
+}
+
+// GetInventory — GET /api/supplies/inventory
+func (h *Handler) GetInventory(c echo.Context) error {
+	summary, err := h.supplySvc.GetInventory()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, summary)
+}
+
+// RestockSupply — POST /api/supplies/:id/restock
+// Body: {"quantity": 500}
+func (h *Handler) RestockSupply(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	var body struct {
+		Quantity float64 `json:"quantity"`
+	}
+	if err := c.Bind(&body); err != nil || body.Quantity <= 0 {
+		return c.JSON(http.StatusBadRequest, m("quantity обязателен и должен быть > 0"))
+	}
+	supply, err := h.supplySvc.Restock(id, body.Quantity)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, supply)
 }
 
 // Helpers

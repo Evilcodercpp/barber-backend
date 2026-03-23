@@ -141,6 +141,10 @@ func sendReminders(aptRepo *repository.AppointmentRepository, userRepo *reposito
 	now := time.Now()
 	sent := 0
 	for _, apt := range apts {
+		// пропускаем записи "по договорённости" — у них нет конкретного времени
+		if apt.Time == "по договорённости" {
+			continue
+		}
 		// парсим дату+время записи
 		aptTime, err := time.ParseInLocation("2006-01-02 15:04", apt.Date+" "+apt.Time, now.Location())
 		if err != nil {

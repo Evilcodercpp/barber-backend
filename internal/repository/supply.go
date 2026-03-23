@@ -45,6 +45,23 @@ func (r *SupplyRepository) GetByID(id uint) (*model.Supply, error) {
 	return &s, nil
 }
 
-func (r *SupplyRepository) DeductQuantity(id uint, qty float64) {
-	r.db.Model(&model.Supply{}).Where("id = ?", id).UpdateColumn("quantity", gorm.Expr("quantity - ?", qty))
+// DeductQuantity вычитает qty из остатка. Остаток не уходит ниже 0.
+func (r *SupplyRepository) DeductQuantity(id uint, qty float64) error {
+	return r.db.Model(&model.Supply{}).Where("id = ?", id).
+		UpdateColumn("quantity", gorm.Expr("GREATEST(quantity - ?, 0)", qty)).Error
+}
+
+// AddQuantity добавляет qty к остатку (пополнение склада).
+func (r *SupplyRepository) AddQuantity(id uint, qty float64) error {
+	return r.db.Model(&model.Supply{}).Where("id = ?", id).
+		UpdateColumn("quantity", gorm.Expr("quantity + ?", qty)).Error
+}
+
+// Search ищет расходники по названию, бренду или цвету (нечувствительно к регистру).
+func (r *SupplyRepository) Search(q string) ([]model.Supply, error) {
+	var supplies []model.Supply
+	pattern := "%" + q + "%"
+	err := r.db.Where("brand ILIKE ? OR name ILIKE ? OR color ILIKE ?", pattern, pattern, pattern).
+		Order("type ASC, brand ASC, name ASC").Find(&supplies).Error
+	return supplies, err
 }
