@@ -19,6 +19,8 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/barber?sslmode=disable
       PORT: "8080"
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_MASTER_CHAT_ID: ${TELEGRAM_MASTER_CHAT_ID}
     depends_on:
       - db
 
