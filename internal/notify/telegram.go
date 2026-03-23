@@ -250,6 +250,46 @@ func (n *Notifier) NotifyIndividualRequest(apt *model.Appointment, isNew bool, c
 	n.send(text)
 }
 
+// SendToUser отправляет сообщение конкретному клиенту по chat_id
+func (n *Notifier) SendToUser(chatID int64, text string) {
+	if n.token == "" {
+		return
+	}
+	payload := map[string]interface{}{
+		"chat_id":                  chatID,
+		"text":                     text,
+		"parse_mode":               "HTML",
+		"disable_web_page_preview": true,
+	}
+	body, _ := json.Marshal(payload)
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", n.token)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		fmt.Printf("[notify] send to user error: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+}
+
+// NotifyClientReminder — напоминание клиенту за 24ч до записи
+func (n *Notifier) NotifyClientReminder(chatID int64, apt *model.Appointment) {
+	text := fmt.Sprintf(
+		"⏰ <b>Напоминание о визите завтра</b>\n"+sep+
+			"✂️ <b>Услуга:</b> %s\n"+
+			"📅 <b>Дата:</b> %s\n"+
+			"🕐 <b>Время:</b> %s\n"+
+			sep+
+			"📍 Большой Головин переулок, 3к2\n"+
+			"4 этаж, кабинет 13\n"+
+			sep+
+			"<i>Ждём вас! Если планы изменились — свяжитесь с мастером заранее.</i>",
+		apt.Service,
+		fmtDate(apt.Date),
+		apt.Time,
+	)
+	n.SendToUser(chatID, text)
+}
+
 // NotifyCompleted — запись завершена.
 func (n *Notifier) NotifyCompleted(apt *model.Appointment) {
 	var fin string

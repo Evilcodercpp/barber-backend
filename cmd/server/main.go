@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"strings"
+	"time"
 
+	"barber-backend/internal/bot"
 	"barber-backend/internal/handler"
 	"barber-backend/internal/model"
 	"barber-backend/internal/notify"
@@ -45,6 +49,7 @@ func main() {
 		&model.Client{},
 		&model.Supply{},
 		&model.ServiceSupply{},
+		&model.TelegramUser{},
 	); err != nil {
 		log.Fatal("Ошибка миграции:", err)
 	}
@@ -57,6 +62,7 @@ func main() {
 	clientRepo := repository.NewClientRepository(db)
 	supplyRepo := repository.NewSupplyRepository(db)
 	svcSupplyRepo := repository.NewServiceSupplyRepository(db)
+	tgUserRepo := repository.NewTelegramUserRepository(db)
 
 	// Services
 	aptSvc := service.NewAppointmentService(aptRepo, dateRepo, clientRepo, svcRepo, svcSupplyRepo, supplyRepo)
@@ -77,6 +83,22 @@ func main() {
 	} else {
 		log.Println("Telegram уведомления: выключены (TELEGRAM_BOT_TOKEN или TELEGRAM_MASTER_CHAT_ID не заданы)")
 	}
+
+	// Telegram bot (long-polling)
+	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if botToken != "" {
+		tgBot := bot.New(botToken, tgUserRepo)
+		tgBot.Start(context.Background())
+		log.Println("Telegram бот: запущен (long-polling)")
+	}
+
+	// Reminder cron — каждый час проверяет записи на завтра
+	go func() {
+		for {
+			sendReminders(aptRepo, tgUserRepo, tgNotifier)
+			time.Sleep(1 * time.Hour)
+		}
+	}()
 
 	// Handler
 	h := handler.NewHandler(aptSvc, svcSvc, dateSvc, clientSvc, supplySvc, svcSupplyRepo, tgNotifier)
@@ -107,4 +129,29 @@ func getEnv(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+
+func sendReminders(aptRepo *repository.AppointmentRepository, userRepo *repository.TelegramUserRepository, notifier *notify.Notifier) {
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	apts, err := aptRepo.GetForReminder(tomorrow)
+	if err != nil {
+		log.Printf("[reminder] ошибка запроса: %v", err)
+		return
+	}
+	sent := 0
+	for _, apt := range apts {
+		username := strings.ToLower(strings.TrimPrefix(apt.Telegram, "@"))
+		u, err := userRepo.GetByUsername(username)
+		if err != nil || u == nil {
+			continue // клиент не подписан на бота
+		}
+		notifier.NotifyClientReminder(u.ChatID, &apt)
+		if err := aptRepo.MarkReminderSent(apt.ID); err != nil {
+			log.Printf("[reminder] ошибка отметки apt %d: %v", apt.ID, err)
+		}
+		sent++
+	}
+	if sent > 0 {
+		log.Printf("[reminder] отправлено %d напоминаний на %s", sent, tomorrow)
+	}
 }

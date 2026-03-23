@@ -16,9 +16,10 @@ type Appointment struct {
 	Tips         int       `json:"tips" gorm:"default:0"`
 	Rent         int       `json:"rent" gorm:"default:0"`
 	LateMin      int       `json:"late_min" gorm:"default:0"`
-	SuppliesUsed string    `json:"supplies_used" gorm:"type:text"`
-	Comment      string    `json:"comment" gorm:"type:text"`
-	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
+	SuppliesUsed  string    `json:"supplies_used" gorm:"type:text"`
+	Comment       string    `json:"comment" gorm:"type:text"`
+	ReminderSent  bool      `json:"reminder_sent" gorm:"default:false"`
+	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
 }
 
 type CreateAppointmentRequest struct {

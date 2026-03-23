@@ -71,3 +71,18 @@ func (r *AppointmentRepository) GetByContact(telegram, phone string) ([]model.Ap
 func (r *AppointmentRepository) Delete(id uint) error {
 	return r.db.Delete(&model.Appointment{}, id).Error
 }
+
+// GetForReminder возвращает записи на указанную дату, которым ещё не отправлено напоминание
+func (r *AppointmentRepository) GetForReminder(date string) ([]model.Appointment, error) {
+	var apts []model.Appointment
+	err := r.db.Where(
+		"date = ? AND status IN ? AND telegram != '' AND reminder_sent = false",
+		date, []string{"active", "rescheduled"},
+	).Find(&apts).Error
+	return apts, err
+}
+
+// MarkReminderSent помечает запись как отправленную
+func (r *AppointmentRepository) MarkReminderSent(id uint) error {
+	return r.db.Model(&model.Appointment{}).Where("id = ?", id).Update("reminder_sent", true).Error
+}
