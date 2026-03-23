@@ -56,40 +56,44 @@ func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentReques
 		return nil, errors.New("укажите Telegram или телефон")
 	}
 
-	available, err := s.dateRepo.IsAvailable(req.Date)
-	if err != nil {
-		return nil, err
-	}
-	if !available {
-		return nil, errors.New("мастер не работает в этот день")
-	}
-
-	existing, err := s.repo.GetByDate(req.Date)
-	if err != nil {
-		return nil, err
-	}
-
 	durationMin := req.DurationMin
-	if durationMin <= 0 {
-		durationMin = 60
-	}
 
-	newStart := timeToMinutes(req.Time)
-	newEnd := newStart + durationMin
+	// Individual-time bookings skip availability and conflict checks
+	if req.Time != "по договорённости" {
+		available, err := s.dateRepo.IsAvailable(req.Date)
+		if err != nil {
+			return nil, err
+		}
+		if !available {
+			return nil, errors.New("мастер не работает в этот день")
+		}
 
-	for _, apt := range existing {
-		if apt.Status == "cancelled" {
-			continue
+		existing, err := s.repo.GetByDate(req.Date)
+		if err != nil {
+			return nil, err
 		}
-		aptStart := timeToMinutes(apt.Time)
-		aptDur := apt.DurationMin
-		if aptDur <= 0 {
-			aptDur = 60
+
+		if durationMin <= 0 {
+			durationMin = 60
 		}
-		aptEnd := aptStart + aptDur
-		if newStart < aptEnd && newEnd > aptStart {
-			conflict := apt
-			return nil, &ConflictError{ConflictingApt: &conflict}
+
+		newStart := timeToMinutes(req.Time)
+		newEnd := newStart + durationMin
+
+		for _, apt := range existing {
+			if apt.Status == "cancelled" {
+				continue
+			}
+			aptStart := timeToMinutes(apt.Time)
+			aptDur := apt.DurationMin
+			if aptDur <= 0 {
+				aptDur = 60
+			}
+			aptEnd := aptStart + aptDur
+			if newStart < aptEnd && newEnd > aptStart {
+				conflict := apt
+				return nil, &ConflictError{ConflictingApt: &conflict}
+			}
 		}
 	}
 

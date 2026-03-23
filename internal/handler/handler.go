@@ -130,7 +130,11 @@ func (h *Handler) CreateAppointment(c echo.Context) error {
 	allByContact, _ := h.aptSvc.GetByContact(apt.Telegram, apt.Phone)
 	isNew := len(allByContact) <= 1
 	comment := h.clientComment(apt.Telegram, apt.Phone)
-	go h.notifier.NotifyNewBooking(apt, isNew, comment)
+	if apt.Time == "по договорённости" {
+		go h.notifier.NotifyIndividualRequest(apt, isNew, comment)
+	} else {
+		go h.notifier.NotifyNewBooking(apt, isNew, comment)
+	}
 
 	return c.JSON(http.StatusCreated, apt)
 }

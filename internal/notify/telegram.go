@@ -212,6 +212,44 @@ func (n *Notifier) NotifyLate(apt *model.Appointment, lateMin int) {
 	n.send(text)
 }
 
+// NotifyIndividualRequest — клиент хочет записаться на индивидуальное время, указал предпочтительные дни.
+func (n *Notifier) NotifyIndividualRequest(apt *model.Appointment, isNew bool, clientComment string) {
+	header := "📋 <b>ЗАПРОС НА ЗАПИСЬ</b>"
+	if isNew {
+		header = "🆕 <b>НОВЫЙ КЛИЕНТ · ЗАПРОС НА ЗАПИСЬ</b>"
+	}
+
+	// Format comma-separated dates
+	dates := apt.Date
+	rawDates := strings.Split(apt.Date, ",")
+	if len(rawDates) > 0 {
+		var formatted []string
+		for _, d := range rawDates {
+			d = strings.TrimSpace(d)
+			formatted = append(formatted, fmtDate(d))
+		}
+		dates = strings.Join(formatted, ", ")
+	}
+
+	text := fmt.Sprintf(
+		"%s\n"+sep+
+			"👤 <b>Имя:</b> %s\n"+
+			"%s"+
+			sep+
+			"✂️ <b>Услуга:</b> %s\n"+
+			"📅 <b>Желаемые дни:</b> %s\n"+
+			"%s"+
+			"⚡ <i>Нужно согласовать время как можно скорее</i>",
+		header,
+		apt.ClientName,
+		fmtContacts(apt),
+		apt.Service,
+		dates,
+		fmtComment(clientComment),
+	)
+	n.send(text)
+}
+
 // NotifyCompleted — запись завершена.
 func (n *Notifier) NotifyCompleted(apt *model.Appointment) {
 	var fin string
