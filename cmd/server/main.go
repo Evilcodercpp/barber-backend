@@ -132,14 +132,26 @@ func getEnv(key, fallback string) string {
 }
 
 func sendReminders(aptRepo *repository.AppointmentRepository, userRepo *repository.TelegramUserRepository, notifier *notify.Notifier) {
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
-	apts, err := aptRepo.GetForReminder(tomorrow)
+	apts, err := aptRepo.GetForReminder()
 	if err != nil {
 		log.Printf("[reminder] ошибка запроса: %v", err)
 		return
 	}
+
+	now := time.Now()
 	sent := 0
 	for _, apt := range apts {
+		// парсим дату+время записи
+		aptTime, err := time.ParseInLocation("2006-01-02 15:04", apt.Date+" "+apt.Time, now.Location())
+		if err != nil {
+			continue
+		}
+		diff := aptTime.Sub(now)
+		// отправляем только если до записи от 20 до 28 часов
+		if diff < 20*time.Hour || diff > 28*time.Hour {
+			continue
+		}
+
 		username := strings.ToLower(strings.TrimPrefix(apt.Telegram, "@"))
 		u, err := userRepo.GetByUsername(username)
 		if err != nil || u == nil {
@@ -152,6 +164,6 @@ func sendReminders(aptRepo *repository.AppointmentRepository, userRepo *reposito
 		sent++
 	}
 	if sent > 0 {
-		log.Printf("[reminder] отправлено %d напоминаний на %s", sent, tomorrow)
+		log.Printf("[reminder] отправлено %d напоминаний", sent)
 	}
 }

@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"barber-backend/internal/model"
 	"gorm.io/gorm"
 )
@@ -72,12 +74,19 @@ func (r *AppointmentRepository) Delete(id uint) error {
 	return r.db.Delete(&model.Appointment{}, id).Error
 }
 
-// GetForReminder возвращает записи на указанную дату, которым ещё не отправлено напоминание
-func (r *AppointmentRepository) GetForReminder(date string) ([]model.Appointment, error) {
+// GetForReminder возвращает кандидатов на напоминание за ближайшие 3 дня
+// (финальная фильтрация по окну 20-28ч делается в Go)
+func (r *AppointmentRepository) GetForReminder() ([]model.Appointment, error) {
+	now := time.Now()
+	dates := []string{
+		now.Format("2006-01-02"),
+		now.AddDate(0, 0, 1).Format("2006-01-02"),
+		now.AddDate(0, 0, 2).Format("2006-01-02"),
+	}
 	var apts []model.Appointment
 	err := r.db.Where(
-		"date = ? AND status IN ? AND telegram != '' AND reminder_sent = false",
-		date, []string{"active", "rescheduled"},
+		"date IN ? AND status IN ? AND telegram != '' AND reminder_sent = false",
+		dates, []string{"active", "rescheduled"},
 	).Find(&apts).Error
 	return apts, err
 }
