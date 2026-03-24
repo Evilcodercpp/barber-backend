@@ -13,14 +13,18 @@ import (
 )
 
 type Notifier struct {
-	token  string
-	chatID string
+	token          string
+	chatID         string
+	masterUsername string
+	siteURL        string
 }
 
 func NewNotifier() *Notifier {
 	return &Notifier{
-		token:  os.Getenv("TELEGRAM_BOT_TOKEN"),
-		chatID: os.Getenv("TELEGRAM_MASTER_CHAT_ID"),
+		token:          os.Getenv("TELEGRAM_BOT_TOKEN"),
+		chatID:         os.Getenv("TELEGRAM_MASTER_CHAT_ID"),
+		masterUsername: os.Getenv("TELEGRAM_MASTER_USERNAME"),
+		siteURL:        os.Getenv("SITE_URL"),
 	}
 }
 
@@ -273,6 +277,15 @@ func (n *Notifier) SendToUser(chatID int64, text string) {
 
 // NotifyClientReminder — напоминание клиенту за 24ч до записи
 func (n *Notifier) NotifyClientReminder(chatID int64, apt *model.Appointment) {
+	contactLine := ""
+	if n.masterUsername != "" {
+		handle := strings.TrimPrefix(n.masterUsername, "@")
+		contactLine = fmt.Sprintf("\n📩 <a href=\"https://t.me/%s\">Написать мастеру в Telegram</a>", handle)
+	}
+	siteLink := ""
+	if n.siteURL != "" {
+		siteLink = fmt.Sprintf("\n🌐 <a href=\"%s\">Отменить или перенести запись на сайте</a>", n.siteURL)
+	}
 	text := fmt.Sprintf(
 		"⏰ <b>Напоминание о визите завтра</b>\n"+sep+
 			"✂️ <b>Услуга:</b> %s\n"+
@@ -282,10 +295,13 @@ func (n *Notifier) NotifyClientReminder(chatID int64, apt *model.Appointment) {
 			"📍 Большой Головин переулок, 3к2\n"+
 			"4 этаж, кабинет 13\n"+
 			sep+
-			"<i>Ждём вас! Если планы изменились — свяжитесь с мастером заранее.</i>",
+			"<i>Ждём вас! Если планы изменились — свяжитесь с мастером заранее.</i>"+
+			"%s%s",
 		apt.Service,
 		fmtDate(apt.Date),
 		apt.Time,
+		contactLine,
+		siteLink,
 	)
 	n.SendToUser(chatID, text)
 }

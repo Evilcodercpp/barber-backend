@@ -103,6 +103,17 @@ func main() {
 		}
 	}()
 
+	// Cleanup cron — раз в сутки удаляет просроченные записи листа ожидания
+	go func() {
+		for {
+			today := time.Now().Format("2006-01-02")
+			if err := waitlistRepo.DeleteExpired(today); err != nil {
+				log.Printf("[waitlist cleanup] ошибка: %v", err)
+			}
+			time.Sleep(24 * time.Hour)
+		}
+	}()
+
 	// Handler
 	h := handler.NewHandler(aptSvc, svcSvc, dateSvc, clientSvc, supplySvc, waitlistSvc, svcSupplyRepo, aptRepo, tgNotifier)
 

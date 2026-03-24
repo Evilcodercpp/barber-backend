@@ -45,3 +45,9 @@ func (r *WaitlistRepository) UpdateStatus(id uint, status string) error {
 func (r *WaitlistRepository) Delete(id uint) error {
 	return r.db.Delete(&model.WaitlistEntry{}, id).Error
 }
+
+// DeleteExpired удаляет записи листа ожидания, дата которых уже прошла (статус waiting/notified)
+func (r *WaitlistRepository) DeleteExpired(today string) error {
+	return r.db.Where("date < ? AND status IN ('waiting','notified')", today).
+		Delete(&model.WaitlistEntry{}).Error
+}
