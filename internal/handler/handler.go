@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,6 +31,7 @@ type Handler struct {
 	waitlistSvc   *service.WaitlistService
 	svcSupplyRepo *repository.ServiceSupplyRepository
 	aptRepo       *repository.AppointmentRepository
+	reviewRepo    *repository.ReviewRepository
 	notifier      *notify.Notifier
 }
 
@@ -39,6 +44,7 @@ func NewHandler(
 	waitlistSvc *service.WaitlistService,
 	svcSupplyRepo *repository.ServiceSupplyRepository,
 	aptRepo *repository.AppointmentRepository,
+	reviewRepo *repository.ReviewRepository,
 	notifier *notify.Notifier,
 ) *Handler {
 	return &Handler{
@@ -50,6 +56,7 @@ func NewHandler(
 		waitlistSvc:   waitlistSvc,
 		svcSupplyRepo: svcSupplyRepo,
 		aptRepo:       aptRepo,
+		reviewRepo:    reviewRepo,
 		notifier:      notifier,
 	}
 }
@@ -122,6 +129,14 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.POST("/supplies/:id/restock", h.RestockSupply)
 
 	api.POST("/admin/reseed-services", h.ReseedServices)
+
+	// Reviews
+	api.GET("/reviews", h.GetReviews)
+	api.POST("/reviews/check", h.CheckReviewEligibility)
+	api.POST("/reviews", h.SubmitReview)
+	api.GET("/reviews/all", h.GetAllReviews)
+	api.PATCH("/reviews/:id", h.ApproveReview)
+	api.DELETE("/reviews/:id", h.DeleteReview)
 }
 
 // ==================== Appointments ====================
@@ -465,21 +480,54 @@ func (h *Handler) UploadFile(c echo.Context) error {
 	}
 	defer src.Close()
 
-	os.MkdirAll("/tmp/uploads", 0755)
-	ext := filepath.Ext(file.Filename)
-	if ext == "" {
-		ext = ".jpg"
+	imgbbKey := os.Getenv("IMGBB_API_KEY")
+	if imgbbKey == "" {
+		return c.JSON(http.StatusInternalServerError, m("IMGBB_API_KEY не настроен"))
 	}
-	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	dst, err := os.Create("/tmp/uploads/" + filename)
+
+	data, err := io.ReadAll(src)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, m("Ошибка сохранения"))
+		return c.JSON(http.StatusInternalServerError, m("Ошибка чтения файла"))
 	}
-	defer dst.Close()
-	if _, err = io.Copy(dst, src); err != nil {
-		return c.JSON(http.StatusInternalServerError, m("Ошибка записи"))
+	encoded := base64.StdEncoding.EncodeToString(data)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("key", imgbbKey)
+	_ = writer.WriteField("image", encoded)
+	ext := filepath.Ext(file.Filename)
+	_ = writer.WriteField("name", fmt.Sprintf("%d%s", time.Now().UnixNano(), ext))
+	writer.Close()
+
+	resp, err := http.Post("https://api.imgbb.com/1/upload", writer.FormDataContentType(), &body)
+	if err != nil {
+		return h.saveLocalFile(c, data, ext)
 	}
-	return c.JSON(http.StatusOK, map[string]string{"url": "/uploads/" + filename})
+	defer resp.Body.Close()
+
+	var result struct {
+		Data struct {
+			URL string `json:"url"`
+		} `json:"data"`
+		Success bool `json:"success"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || !result.Success {
+		// ImgBB failed — save locally as fallback
+		return h.saveLocalFile(c, data, ext)
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"url": result.Data.URL})
+}
+
+func (h *Handler) saveLocalFile(c echo.Context, data []byte, ext string) error {
+	dir := "/tmp/uploads"
+	_ = os.MkdirAll(dir, 0755)
+	fname := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
+	if err := os.WriteFile(filepath.Join(dir, fname), data, 0644); err != nil {
+		return c.JSON(http.StatusInternalServerError, m("Ошибка сохранения файла"))
+	}
+	baseURL := os.Getenv("APP_BASE_URL")
+	return c.JSON(http.StatusOK, map[string]string{"url": baseURL + "/uploads/" + fname})
 }
 
 // ==================== Dates ====================
@@ -824,6 +872,122 @@ func (h *Handler) GetClientCard(c echo.Context) error {
 		}
 	}
 	return c.JSON(http.StatusOK, card)
+}
+
+// ==================== Reviews ====================
+
+// CheckReviewEligibility — проверяет по телефону, есть ли завершённые записи, на которые ещё не оставлен отзыв
+func (h *Handler) CheckReviewEligibility(c echo.Context) error {
+	var body struct {
+		Phone string `json:"phone"`
+	}
+	if err := c.Bind(&body); err != nil || body.Phone == "" {
+		return c.JSON(http.StatusBadRequest, m("phone обязателен"))
+	}
+	apts, err := h.reviewRepo.GetCompletedByPhone(body.Phone)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	eligible := []model.EligibleAppointment{}
+	for _, a := range apts {
+		if !h.reviewRepo.ExistsForAppointment(a.ID) {
+			eligible = append(eligible, model.EligibleAppointment{
+				ID:      a.ID,
+				Service: a.Service,
+				Date:    a.Date,
+			})
+		}
+	}
+	return c.JSON(http.StatusOK, eligible)
+}
+
+// SubmitReview — клиент отправляет отзыв
+func (h *Handler) SubmitReview(c echo.Context) error {
+	var req model.SubmitReviewRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	if req.Rating < 1 || req.Rating > 5 {
+		return c.JSON(http.StatusBadRequest, m("Рейтинг от 1 до 5"))
+	}
+	if req.AppointmentID == 0 {
+		return c.JSON(http.StatusBadRequest, m("appointment_id обязателен"))
+	}
+	if h.reviewRepo.ExistsForAppointment(req.AppointmentID) {
+		return c.JSON(http.StatusConflict, m("Отзыв на эту запись уже оставлен"))
+	}
+	// проверяем, что запись действительно завершена и принадлежит этому телефону
+	apt, err := h.aptRepo.GetByID(req.AppointmentID)
+	if err != nil || apt.Status != "completed" || apt.Phone != req.Phone {
+		return c.JSON(http.StatusForbidden, m("Нет доступа к этой записи"))
+	}
+	review := &model.Review{
+		AppointmentID: req.AppointmentID,
+		ServiceName:   apt.Service,
+		Rating:        req.Rating,
+		Text:          req.Text,
+		Photos:        req.Photos,
+		ClientName:    apt.ClientName,
+		Phone:         req.Phone,
+		Approved:      false,
+	}
+	if err := h.reviewRepo.Create(review); err != nil {
+		return c.JSON(http.StatusInternalServerError, m("Ошибка сохранения отзыва"))
+	}
+	return c.JSON(http.StatusCreated, map[string]string{"message": "Отзыв отправлен на модерацию"})
+}
+
+// GetReviews — публичный список одобренных отзывов (без личных данных)
+func (h *Handler) GetReviews(c echo.Context) error {
+	reviews, err := h.reviewRepo.GetApproved()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	public := make([]model.PublicReview, 0, len(reviews))
+	for _, r := range reviews {
+		public = append(public, model.PublicReview{
+			ID:          r.ID,
+			ServiceName: r.ServiceName,
+			Rating:      r.Rating,
+			Text:        r.Text,
+			Photos:      r.Photos,
+			CreatedAt:   r.CreatedAt,
+		})
+	}
+	return c.JSON(http.StatusOK, public)
+}
+
+// GetAllReviews — все отзывы для мастера (с личными данными)
+func (h *Handler) GetAllReviews(c echo.Context) error {
+	reviews, err := h.reviewRepo.GetAll()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, reviews)
+}
+
+// ApproveReview — мастер одобряет или отклоняет отзыв
+func (h *Handler) ApproveReview(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	var body struct {
+		Approved bool `json:"approved"`
+	}
+	if err := c.Bind(&body); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	if err := h.reviewRepo.SetApproved(id, body.Approved); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, map[string]bool{"approved": body.Approved})
+}
+
+// DeleteReview — мастер удаляет отзыв
+func (h *Handler) DeleteReview(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if err := h.reviewRepo.Delete(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, m("Удалён"))
 }
 
 // Helpers

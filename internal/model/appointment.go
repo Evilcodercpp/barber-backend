@@ -203,3 +203,42 @@ type ServiceSupplyWithInfo struct {
 	SupplyName  string `json:"supply_name"`
 	SupplyType  string `json:"supply_type"`
 }
+
+// Review — отзыв клиента о завершённой услуге
+type Review struct {
+	ID            uint      `json:"id" gorm:"primaryKey"`
+	AppointmentID uint      `json:"appointment_id" gorm:"not null;uniqueIndex"`
+	ServiceName   string    `json:"service_name"`
+	Rating        int       `json:"rating" gorm:"not null"`
+	Text          string    `json:"text" gorm:"type:text"`
+	Photos        string    `json:"photos" gorm:"type:text"` // JSON array of URLs
+	ClientName    string    `json:"client_name"`             // хранится, но не отдаётся публично
+	Phone         string    `json:"phone"`                   // хранится, но не отдаётся публично
+	Approved      bool      `json:"approved" gorm:"default:false"`
+	CreatedAt     time.Time `json:"created_at" gorm:"autoCreateTime"`
+}
+
+// PublicReview — отзыв без личных данных клиента (для клиентского сайта)
+type PublicReview struct {
+	ID          uint      `json:"id"`
+	ServiceName string    `json:"service_name"`
+	Rating      int       `json:"rating"`
+	Text        string    `json:"text"`
+	Photos      string    `json:"photos"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type SubmitReviewRequest struct {
+	AppointmentID uint   `json:"appointment_id"`
+	Phone         string `json:"phone"`
+	Rating        int    `json:"rating"`
+	Text          string `json:"text"`
+	Photos        string `json:"photos"` // JSON array
+}
+
+// EligibleAppointment — завершённая запись, на которую можно оставить отзыв
+type EligibleAppointment struct {
+	ID      uint   `json:"id"`
+	Service string `json:"service"`
+	Date    string `json:"date"`
+}
