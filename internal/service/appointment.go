@@ -107,6 +107,7 @@ func (s *AppointmentService) CreateAppointment(req model.CreateAppointmentReques
 		Time:        req.Time,
 		Status:      "active",
 		Price:       req.Price,
+		Comment:     req.Comment,
 	}
 
 	if err := s.repo.Create(apt); err != nil {

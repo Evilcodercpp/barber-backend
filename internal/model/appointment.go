@@ -45,6 +45,7 @@ type CreateAppointmentRequest struct {
 	Date        string `json:"date"`
 	Time        string `json:"time"`
 	Price       int    `json:"price"`
+	Comment     string `json:"comment"`
 }
 
 type UpdateAppointmentRequest struct {
