@@ -91,6 +91,13 @@ func fmtComment(comment string) string {
 	return fmt.Sprintf("📝 <b>Комментарий:</b> %s\n", comment)
 }
 
+func fmtBookingRequest(comment string) string {
+	if comment == "" {
+		return ""
+	}
+	return fmt.Sprintf("💬 <b>Запрос клиента:</b> %s\n", comment)
+}
+
 func fmtDuration(apt *model.Appointment) string {
 	if apt.DurationMin > 0 && apt.DurationMin != 60 {
 		return fmt.Sprintf("⏱ <b>Длительность:</b> %d мин\n", apt.DurationMin)
@@ -142,6 +149,7 @@ func (n *Notifier) NotifyNewBooking(apt *model.Appointment, isNew bool, clientCo
 			"🕐 <b>Время:</b> %s\n"+
 			"%s"+
 			"%s"+
+			"%s"+
 			"%s",
 		header,
 		apt.ClientName,
@@ -151,6 +159,7 @@ func (n *Notifier) NotifyNewBooking(apt *model.Appointment, isNew bool, clientCo
 		apt.Time,
 		fmtDuration(apt),
 		fmtPrice(apt),
+		fmtBookingRequest(apt.Comment),
 		fmtComment(clientComment),
 	)
 	n.send(text)
@@ -243,12 +252,14 @@ func (n *Notifier) NotifyIndividualRequest(apt *model.Appointment, isNew bool, c
 			"✂️ <b>Услуга:</b> %s\n"+
 			"📅 <b>Желаемые дни:</b> %s\n"+
 			"%s"+
+			"%s"+
 			"⚡ <i>Нужно согласовать время как можно скорее</i>",
 		header,
 		apt.ClientName,
 		fmtContacts(apt),
 		apt.Service,
 		dates,
+		fmtBookingRequest(apt.Comment),
 		fmtComment(clientComment),
 	)
 	n.send(text)
