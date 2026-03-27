@@ -19,7 +19,9 @@ type Appointment struct {
 	SuppliesUsed  string    `json:"supplies_used" gorm:"type:text"` // JSON: []SupplyUsedItem
 	SupplyCost    int       `json:"supply_cost" gorm:"default:0"`   // себестоимость расходников (руб), рассчитывается при завершении
 	Comment       string    `json:"comment" gorm:"type:text"`
-	ReminderSent  bool      `json:"reminder_sent" gorm:"default:false"`
+	MasterComment  string    `json:"master_comment" gorm:"type:text"`   // заметка мастера после визита
+	ActualEndTime  string    `json:"actual_end_time"`                   // фактическое время окончания
+	ReminderSent   bool      `json:"reminder_sent" gorm:"default:false"`
 	PaymentStatus string    `json:"payment_status" gorm:"default:'paid'"` // paid / unpaid / partial
 	PaymentDate   string    `json:"payment_date"`                          // дата оплаты (если отличается от date)
 	PaidAmount    int       `json:"paid_amount" gorm:"default:0"`          // оплачено по факту (для partial)
@@ -57,6 +59,8 @@ type UpdateAppointmentRequest struct {
 	LateMin       int    `json:"late_min"`
 	SuppliesUsed  string `json:"supplies_used"`
 	Comment       string `json:"comment"`
+	MasterComment string `json:"master_comment"`
+	ActualEndTime string `json:"actual_end_time"`
 	PaymentStatus string `json:"payment_status"`
 	PaymentDate   string `json:"payment_date"`
 	PaidAmount    int    `json:"paid_amount"`
@@ -231,6 +235,7 @@ type PublicReview struct {
 type SubmitReviewRequest struct {
 	AppointmentID uint   `json:"appointment_id"`
 	Phone         string `json:"phone"`
+	Telegram      string `json:"telegram"`
 	Rating        int    `json:"rating"`
 	Text          string `json:"text"`
 	Photos        string `json:"photos"` // JSON array

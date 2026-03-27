@@ -306,6 +306,121 @@ func (n *Notifier) NotifyClientReminder(chatID int64, apt *model.Appointment) {
 	n.SendToUser(chatID, text)
 }
 
+// ─── daily summary ──────────────────────────────────────────────────────────
+
+// DailySummaryItem — данные по одной записи для вечерней сводки мастеру.
+type DailySummaryItem struct {
+	Apt          model.Appointment
+	ClientCard   *model.Client   // карточка клиента (может быть nil)
+	PastComments []string        // master_comment из прошлых завершённых визитов (последние 3)
+	LowSupplies  []model.Supply  // расходники под услугу с низким остатком
+}
+
+// NotifyDailySummary отправляет сводку по записям на следующий день.
+func (n *Notifier) NotifyDailySummary(date string, items []DailySummaryItem, globalLowStock []model.Supply) {
+	if !n.Enabled() {
+		return
+	}
+	if len(items) == 0 && len(globalLowStock) == 0 {
+		return
+	}
+
+	header := fmt.Sprintf("📅 <b>СВОДКА НА %s</b>\n", fmtDate(date))
+	if len(items) == 0 {
+		n.send(header + sep + "Записей нет.")
+		return
+	}
+
+	// Счётчик слово «запись»
+	wordZapis := "записей"
+	switch len(items) {
+	case 1:
+		wordZapis = "запись"
+	case 2, 3, 4:
+		wordZapis = "записи"
+	}
+	msg := fmt.Sprintf("%s%s<b>%d %s</b>\n\n", header, sep, len(items), wordZapis)
+
+	for i, item := range items {
+		apt := item.Apt
+		// Заголовок записи
+		msg += fmt.Sprintf("<b>%d. %s — %s</b>\n", i+1, apt.Time, apt.Service)
+		if apt.DurationMin > 0 && apt.DurationMin != 60 {
+			msg += fmt.Sprintf("⏱ %d мин\n", apt.DurationMin)
+		}
+		if apt.Price > 0 {
+			msg += fmt.Sprintf("💰 %s ₽\n", fmtNum(apt.Price))
+		}
+
+		// Клиент
+		msg += fmt.Sprintf("\n👤 <b>%s</b>\n", apt.ClientName)
+		msg += fmtContacts(&apt)
+
+		// Комментарий к записи
+		if apt.Comment != "" {
+			msg += fmt.Sprintf("💬 %s\n", apt.Comment)
+		}
+
+		// Карточка клиента
+		if item.ClientCard != nil {
+			c := item.ClientCard
+			hasCard := c.HairType != "" || c.Allergies != "" || c.ColorFormula != "" || c.Comment != ""
+			if hasCard {
+				msg += "\n🗂 <b>Карточка клиента:</b>\n"
+				if c.HairType != "" {
+					msg += fmt.Sprintf("• Тип волос: %s\n", c.HairType)
+				}
+				if c.Allergies != "" {
+					msg += fmt.Sprintf("• Аллергии: %s\n", c.Allergies)
+				}
+				if c.ColorFormula != "" {
+					msg += fmt.Sprintf("• Формула: %s\n", c.ColorFormula)
+				}
+				if c.Comment != "" {
+					msg += fmt.Sprintf("• Заметка: %s\n", c.Comment)
+				}
+			}
+		}
+
+		// Прошлые визиты (комментарии мастера)
+		if len(item.PastComments) > 0 {
+			msg += "\n📖 <b>Прошлые визиты:</b>\n"
+			for _, pc := range item.PastComments {
+				msg += fmt.Sprintf("• %s\n", pc)
+			}
+		}
+
+		// Расходники с низким остатком под эту услугу
+		if len(item.LowSupplies) > 0 {
+			msg += "\n⚠️ <b>Не хватает расходников:</b>\n"
+			for _, s := range item.LowSupplies {
+				unit := "г"
+				if s.Unit == "piece" {
+					unit = "шт"
+				}
+				msg += fmt.Sprintf("• %s %s — %.0f%s (мин %.0f%s)\n",
+					s.Brand, s.Name, s.Quantity, unit, s.MinQuantity, unit)
+			}
+		}
+
+		msg += sep
+	}
+
+	// Глобальные расходники с низким остатком (не связанные с конкретной услугой)
+	if len(globalLowStock) > 0 {
+		msg += "\n🔴 <b>Общий склад — заканчивается:</b>\n"
+		for _, s := range globalLowStock {
+			unit := "г"
+			if s.Unit == "piece" {
+				unit = "шт"
+			}
+			msg += fmt.Sprintf("• %s %s — %.0f%s\n", s.Brand, s.Name, s.Quantity, unit)
+		}
+	}
+
+	n.send(strings.TrimRight(msg, "\n"))
+}
+
 // NotifyCompleted — запись завершена.
 func (n *Notifier) NotifyCompleted(apt *model.Appointment) {
 	var fin string

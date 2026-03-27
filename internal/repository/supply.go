@@ -57,6 +57,14 @@ func (r *SupplyRepository) AddQuantity(id uint, qty float64) error {
 		UpdateColumn("quantity", gorm.Expr("quantity + ?", qty)).Error
 }
 
+// GetLowStock возвращает расходники у которых остаток ≤ мин. порогу (и порог > 0).
+func (r *SupplyRepository) GetLowStock() ([]model.Supply, error) {
+	var supplies []model.Supply
+	err := r.db.Where("min_quantity > 0 AND quantity <= min_quantity").
+		Order("type ASC, brand ASC, name ASC").Find(&supplies).Error
+	return supplies, err
+}
+
 // Search ищет расходники по названию, бренду или цвету (нечувствительно к регистру).
 func (r *SupplyRepository) Search(q string) ([]model.Supply, error) {
 	var supplies []model.Supply

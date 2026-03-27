@@ -164,6 +164,10 @@ func (s *AppointmentService) UpdateAppointment(id uint, req model.UpdateAppointm
 	if req.Comment != "" {
 		apt.Comment = req.Comment
 	}
+	apt.MasterComment = req.MasterComment
+	if req.ActualEndTime != "" {
+		apt.ActualEndTime = req.ActualEndTime
+	}
 	if req.PaymentStatus != "" {
 		apt.PaymentStatus = req.PaymentStatus
 	}

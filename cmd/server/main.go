@@ -105,6 +105,23 @@ func main() {
 		}
 	}()
 
+	// Daily summary cron — каждый день в 19:30 по МСК отправляет сводку на следующий день
+	go func() {
+		moscowLoc, err := time.LoadLocation("Europe/Moscow")
+		if err != nil {
+			moscowLoc = time.FixedZone("MSK", 3*60*60)
+		}
+		for {
+			now := time.Now().In(moscowLoc)
+			next := time.Date(now.Year(), now.Month(), now.Day(), 19, 30, 0, 0, moscowLoc)
+			if !now.Before(next) {
+				next = next.Add(24 * time.Hour)
+			}
+			time.Sleep(next.Sub(now))
+			sendDailySummary(aptRepo, clientRepo, supplyRepo, svcRepo, svcSupplyRepo, tgNotifier)
+		}
+	}()
+
 	// Cleanup cron — раз в сутки удаляет просроченные записи листа ожидания
 	go func() {
 		for {
@@ -145,6 +162,90 @@ func getEnv(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+
+func sendDailySummary(
+	aptRepo *repository.AppointmentRepository,
+	clientRepo *repository.ClientRepository,
+	supplyRepo *repository.SupplyRepository,
+	svcRepo *repository.ServiceRepository,
+	svcSupplyRepo *repository.ServiceSupplyRepository,
+	notifier *notify.Notifier,
+) {
+	if !notifier.Enabled() {
+		return
+	}
+
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	allApts, err := aptRepo.GetByDate(tomorrow)
+	if err != nil {
+		log.Printf("[daily-summary] ошибка запроса записей: %v", err)
+		return
+	}
+
+	// Только активные записи
+	var apts []model.Appointment
+	for _, a := range allApts {
+		if a.Status == "active" || a.Status == "rescheduled" {
+			apts = append(apts, a)
+		}
+	}
+
+	// Все расходники с низким остатком
+	globalLowStock, err := supplyRepo.GetLowStock()
+	if err != nil {
+		log.Printf("[daily-summary] ошибка запроса расходников: %v", err)
+	}
+
+	// Индекс расходников с низким остатком: supply_id → Supply
+	lowStockByID := make(map[uint]model.Supply)
+	for _, s := range globalLowStock {
+		lowStockByID[s.ID] = s
+	}
+
+	var items []notify.DailySummaryItem
+	for _, apt := range apts {
+		item := notify.DailySummaryItem{Apt: apt}
+
+		// Карточка клиента
+		client := clientRepo.FindByContact(apt.Telegram, apt.Phone)
+		if client == nil && apt.ClientName != "" {
+			// Попытка найти по имени в прошлых записях не нужна — просто nil
+		}
+		item.ClientCard = client
+
+		// Прошлые визиты мастера (master_comment из завершённых записей этого клиента)
+		var pastApts []model.Appointment
+		if apt.Telegram != "" || apt.Phone != "" {
+			pastApts, _ = aptRepo.GetByContact(apt.Telegram, apt.Phone)
+		}
+		for _, pa := range pastApts {
+			if pa.ID == apt.ID || pa.Status != "completed" || pa.MasterComment == "" {
+				continue
+			}
+			comment := fmt.Sprintf("%s: %s", pa.Date, pa.MasterComment)
+			item.PastComments = append(item.PastComments, comment)
+			if len(item.PastComments) >= 3 {
+				break
+			}
+		}
+
+		// Расходники под услугу с низким остатком
+		svc, err := svcRepo.GetByName(apt.Service)
+		if err == nil && svc != nil {
+			svcSupplies, _ := svcSupplyRepo.GetByServiceIDRaw(svc.ID)
+			for _, ss := range svcSupplies {
+				if s, ok := lowStockByID[ss.SupplyID]; ok {
+					item.LowSupplies = append(item.LowSupplies, s)
+				}
+			}
+		}
+
+		items = append(items, item)
+	}
+
+	notifier.NotifyDailySummary(tomorrow, items, globalLowStock)
+	log.Printf("[daily-summary] отправлена сводка на %s (%d записей)", tomorrow, len(items))
 }
 
 func sendReminders(aptRepo *repository.AppointmentRepository, userRepo *repository.TelegramUserRepository, notifier *notify.Notifier) {

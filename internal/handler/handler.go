@@ -876,15 +876,25 @@ func (h *Handler) GetClientCard(c echo.Context) error {
 
 // ==================== Reviews ====================
 
-// CheckReviewEligibility — проверяет по телефону, есть ли завершённые записи, на которые ещё не оставлен отзыв
+// CheckReviewEligibility — проверяет по телефону или Telegram, есть ли завершённые записи, на которые ещё не оставлен отзыв
 func (h *Handler) CheckReviewEligibility(c echo.Context) error {
 	var body struct {
-		Phone string `json:"phone"`
+		Phone    string `json:"phone"`
+		Telegram string `json:"telegram"`
 	}
-	if err := c.Bind(&body); err != nil || body.Phone == "" {
-		return c.JSON(http.StatusBadRequest, m("phone обязателен"))
+	if err := c.Bind(&body); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
 	}
-	apts, err := h.reviewRepo.GetCompletedByPhone(body.Phone)
+	if body.Phone == "" && body.Telegram == "" {
+		return c.JSON(http.StatusBadRequest, m("телефон или telegram обязателен"))
+	}
+	var apts []model.Appointment
+	var err error
+	if body.Phone != "" {
+		apts, err = h.reviewRepo.GetCompletedByPhone(body.Phone)
+	} else {
+		apts, err = h.reviewRepo.GetCompletedByTelegram(body.Telegram)
+	}
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, m(err.Error()))
 	}
@@ -916,9 +926,14 @@ func (h *Handler) SubmitReview(c echo.Context) error {
 	if h.reviewRepo.ExistsForAppointment(req.AppointmentID) {
 		return c.JSON(http.StatusConflict, m("Отзыв на эту запись уже оставлен"))
 	}
-	// проверяем, что запись действительно завершена и принадлежит этому телефону
+	// проверяем, что запись действительно завершена и принадлежит этому контакту
 	apt, err := h.aptRepo.GetByID(req.AppointmentID)
-	if err != nil || apt.Status != "completed" || apt.Phone != req.Phone {
+	if err != nil || apt.Status != "completed" {
+		return c.JSON(http.StatusForbidden, m("Нет доступа к этой записи"))
+	}
+	phoneMatch := req.Phone != "" && normalizePhone(apt.Phone) == normalizePhone(req.Phone)
+	tgMatch := req.Telegram != "" && normalizeTelegram(apt.Telegram) == normalizeTelegram(req.Telegram)
+	if !phoneMatch && !tgMatch {
 		return c.JSON(http.StatusForbidden, m("Нет доступа к этой записи"))
 	}
 	review := &model.Review{
@@ -993,6 +1008,34 @@ func (h *Handler) DeleteReview(c echo.Context) error {
 // Helpers
 
 func m(msg string) map[string]string { return map[string]string{"error": msg} }
+
+func normalizePhone(phone string) string {
+	digits := ""
+	for _, c := range phone {
+		if c >= '0' && c <= '9' {
+			digits += string(c)
+		}
+	}
+	if len(digits) >= 10 {
+		return digits[len(digits)-10:]
+	}
+	return digits
+}
+
+func normalizeTelegram(t string) string {
+	if len(t) > 0 && t[0] == '@' {
+		t = t[1:]
+	}
+	result := ""
+	for _, c := range t {
+		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' {
+			result += string(c)
+		} else if c >= 'A' && c <= 'Z' {
+			result += string(c + 32)
+		}
+	}
+	return result
+}
 
 func parseID(s string) uint {
 	id, err := strconv.ParseUint(s, 10, 32)
