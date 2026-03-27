@@ -226,6 +226,7 @@ type Review struct {
 // PublicReview — отзыв без личных данных клиента (для клиентского сайта)
 type PublicReview struct {
 	ID          uint      `json:"id"`
+	ClientName  string    `json:"client_name"` // только имя (без контактов)
 	ServiceName string    `json:"service_name"`
 	Rating      int       `json:"rating"`
 	Text        string    `json:"text"`

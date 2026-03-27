@@ -888,15 +888,27 @@ func (h *Handler) CheckReviewEligibility(c echo.Context) error {
 	if body.Phone == "" && body.Telegram == "" {
 		return c.JSON(http.StatusBadRequest, m("телефон или telegram обязателен"))
 	}
+	seen := map[uint]bool{}
 	var apts []model.Appointment
-	var err error
 	if body.Phone != "" {
-		apts, err = h.reviewRepo.GetCompletedByPhone(body.Phone)
-	} else {
-		apts, err = h.reviewRepo.GetCompletedByTelegram(body.Telegram)
+		if byPhone, err := h.reviewRepo.GetCompletedByPhone(body.Phone); err == nil {
+			for _, a := range byPhone {
+				if !seen[a.ID] {
+					seen[a.ID] = true
+					apts = append(apts, a)
+				}
+			}
+		}
 	}
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	if body.Telegram != "" {
+		if byTg, err := h.reviewRepo.GetCompletedByTelegram(body.Telegram); err == nil {
+			for _, a := range byTg {
+				if !seen[a.ID] {
+					seen[a.ID] = true
+					apts = append(apts, a)
+				}
+			}
+		}
 	}
 	eligible := []model.EligibleAppointment{}
 	for _, a := range apts {
@@ -962,6 +974,7 @@ func (h *Handler) GetReviews(c echo.Context) error {
 	for _, r := range reviews {
 		public = append(public, model.PublicReview{
 			ID:          r.ID,
+			ClientName:  r.ClientName,
 			ServiceName: r.ServiceName,
 			Rating:      r.Rating,
 			Text:        r.Text,
