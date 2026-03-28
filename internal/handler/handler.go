@@ -500,15 +500,16 @@ func (h *Handler) UploadFile(c echo.Context) error {
 	}
 	defer src.Close()
 
-	imgbbKey := os.Getenv("IMGBB_API_KEY")
-	if imgbbKey == "" {
-		return c.JSON(http.StatusInternalServerError, m("IMGBB_API_KEY не настроен"))
-	}
-
 	data, err := io.ReadAll(src)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, m("Ошибка чтения файла"))
 	}
+
+	imgbbKey := os.Getenv("IMGBB_API_KEY")
+	if imgbbKey == "" {
+		return h.saveLocalFile(c, data, filepath.Ext(file.Filename))
+	}
+
 	encoded := base64.StdEncoding.EncodeToString(data)
 
 	var body bytes.Buffer
