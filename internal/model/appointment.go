@@ -249,3 +249,47 @@ type EligibleAppointment struct {
 	Service string `json:"service"`
 	Date    string `json:"date"`
 }
+
+// MasterProfile — профиль мастера (одна строка в таблице)
+type MasterProfile struct {
+	ID              uint   `json:"id" gorm:"primaryKey"`
+	Bio             string `json:"bio" gorm:"type:text"`
+	ExperienceYears int    `json:"experience_years"`
+	PhotoURL        string `json:"photo_url"`
+}
+
+// MasterEducation — запись об образовании или сертификате
+type MasterEducation struct {
+	ID       uint   `json:"id" gorm:"primaryKey"`
+	Title    string `json:"title" gorm:"not null"`
+	Year     int    `json:"year"`
+	Type     string `json:"type" gorm:"default:'education'"` // education / certificate
+	ImageURL string `json:"image_url"`
+}
+
+// MasterPortfolio — фото в портфолио
+type MasterPortfolio struct {
+	ID        uint   `json:"id" gorm:"primaryKey"`
+	PhotoURL  string `json:"photo_url" gorm:"not null"`
+	Caption   string `json:"caption"`
+	SortOrder int    `json:"sort_order" gorm:"default:0"`
+}
+
+type UpdateProfileRequest struct {
+	Bio             string `json:"bio"`
+	ExperienceYears int    `json:"experience_years"`
+	PhotoURL        string `json:"photo_url"`
+}
+
+type CreateEducationRequest struct {
+	Title    string `json:"title"`
+	Year     int    `json:"year"`
+	Type     string `json:"type"`
+	ImageURL string `json:"image_url"`
+}
+
+type CreatePortfolioRequest struct {
+	PhotoURL  string `json:"photo_url"`
+	Caption   string `json:"caption"`
+	SortOrder int    `json:"sort_order"`
+}

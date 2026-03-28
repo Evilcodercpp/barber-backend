@@ -23,16 +23,19 @@ import (
 )
 
 type Handler struct {
-	aptSvc        *service.AppointmentService
-	svcSvc        *service.ServiceService
-	dateSvc       *service.AvailableDateService
-	clientSvc     *service.ClientService
-	supplySvc     *service.SupplyService
-	waitlistSvc   *service.WaitlistService
-	svcSupplyRepo *repository.ServiceSupplyRepository
-	aptRepo       *repository.AppointmentRepository
-	reviewRepo    *repository.ReviewRepository
-	notifier      *notify.Notifier
+	aptSvc          *service.AppointmentService
+	svcSvc          *service.ServiceService
+	dateSvc         *service.AvailableDateService
+	clientSvc       *service.ClientService
+	supplySvc       *service.SupplyService
+	waitlistSvc     *service.WaitlistService
+	svcSupplyRepo   *repository.ServiceSupplyRepository
+	aptRepo         *repository.AppointmentRepository
+	reviewRepo      *repository.ReviewRepository
+	profileRepo     *repository.MasterProfileRepository
+	educationRepo   *repository.MasterEducationRepository
+	portfolioRepo   *repository.MasterPortfolioRepository
+	notifier        *notify.Notifier
 }
 
 func NewHandler(
@@ -45,6 +48,9 @@ func NewHandler(
 	svcSupplyRepo *repository.ServiceSupplyRepository,
 	aptRepo *repository.AppointmentRepository,
 	reviewRepo *repository.ReviewRepository,
+	profileRepo *repository.MasterProfileRepository,
+	educationRepo *repository.MasterEducationRepository,
+	portfolioRepo *repository.MasterPortfolioRepository,
 	notifier *notify.Notifier,
 ) *Handler {
 	return &Handler{
@@ -57,6 +63,9 @@ func NewHandler(
 		svcSupplyRepo: svcSupplyRepo,
 		aptRepo:       aptRepo,
 		reviewRepo:    reviewRepo,
+		profileRepo:   profileRepo,
+		educationRepo: educationRepo,
+		portfolioRepo: portfolioRepo,
 		notifier:      notifier,
 	}
 }
@@ -129,6 +138,16 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.POST("/supplies/:id/restock", h.RestockSupply)
 
 	api.POST("/admin/reseed-services", h.ReseedServices)
+
+	// Master profile (public read, master write)
+	api.GET("/profile", h.GetProfile)
+	api.PUT("/profile", h.UpdateProfile)
+	api.GET("/profile/education", h.GetEducation)
+	api.POST("/profile/education", h.CreateEducation)
+	api.DELETE("/profile/education/:id", h.DeleteEducation)
+	api.GET("/profile/portfolio", h.GetPortfolio)
+	api.POST("/profile/portfolio", h.CreatePortfolioItem)
+	api.DELETE("/profile/portfolio/:id", h.DeletePortfolioItem)
 
 	// Reviews
 	api.GET("/reviews", h.GetReviews)
@@ -1056,4 +1075,95 @@ func parseID(s string) uint {
 		return 0
 	}
 	return uint(id)
+}
+
+// ==================== Master Profile ====================
+
+func (h *Handler) GetProfile(c echo.Context) error {
+	profile, err := h.profileRepo.Get()
+	if err != nil {
+		// Профиль ещё не создан — возвращаем пустой
+		return c.JSON(http.StatusOK, model.MasterProfile{})
+	}
+	return c.JSON(http.StatusOK, profile)
+}
+
+func (h *Handler) UpdateProfile(c echo.Context) error {
+	var req model.UpdateProfileRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	profile, err := h.profileRepo.Upsert(req)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, profile)
+}
+
+func (h *Handler) GetEducation(c echo.Context) error {
+	items, err := h.educationRepo.GetAll()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	if items == nil {
+		items = []model.MasterEducation{}
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) CreateEducation(c echo.Context) error {
+	var req model.CreateEducationRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	item, err := h.educationRepo.Create(req)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) DeleteEducation(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	if err := h.educationRepo.Delete(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, m("Удалено"))
+}
+
+func (h *Handler) GetPortfolio(c echo.Context) error {
+	items, err := h.portfolioRepo.GetAll()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	if items == nil {
+		items = []model.MasterPortfolio{}
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+func (h *Handler) CreatePortfolioItem(c echo.Context) error {
+	var req model.CreatePortfolioRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	item, err := h.portfolioRepo.Create(req)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) DeletePortfolioItem(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	if err := h.portfolioRepo.Delete(id); err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, m("Удалено"))
 }

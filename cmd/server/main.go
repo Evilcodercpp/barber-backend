@@ -52,6 +52,9 @@ func main() {
 		&model.TelegramUser{},
 		&model.WaitlistEntry{},
 		&model.Review{},
+		&model.MasterProfile{},
+		&model.MasterEducation{},
+		&model.MasterPortfolio{},
 	); err != nil {
 		log.Fatal("Ошибка миграции:", err)
 	}
@@ -67,6 +70,9 @@ func main() {
 	tgUserRepo := repository.NewTelegramUserRepository(db)
 	waitlistRepo := repository.NewWaitlistRepository(db)
 	reviewRepo := repository.NewReviewRepository(db)
+	profileRepo := repository.NewMasterProfileRepository(db)
+	educationRepo := repository.NewMasterEducationRepository(db)
+	portfolioRepo := repository.NewMasterPortfolioRepository(db)
 
 	// Services
 	aptSvc := service.NewAppointmentService(aptRepo, dateRepo, clientRepo, svcRepo, svcSupplyRepo, supplyRepo)
@@ -134,7 +140,7 @@ func main() {
 	}()
 
 	// Handler
-	h := handler.NewHandler(aptSvc, svcSvc, dateSvc, clientSvc, supplySvc, waitlistSvc, svcSupplyRepo, aptRepo, reviewRepo, tgNotifier)
+	h := handler.NewHandler(aptSvc, svcSvc, dateSvc, clientSvc, supplySvc, waitlistSvc, svcSupplyRepo, aptRepo, reviewRepo, profileRepo, educationRepo, portfolioRepo, tgNotifier)
 
 	e := echo.New()
 	e.Use(middleware.Logger())
