@@ -293,3 +293,7 @@ type CreatePortfolioRequest struct {
 	Caption   string `json:"caption"`
 	SortOrder int    `json:"sort_order"`
 }
+
+type UpdatePortfolioRequest struct {
+	Caption string `json:"caption"`
+}

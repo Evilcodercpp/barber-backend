@@ -147,6 +147,7 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.DELETE("/profile/education/:id", h.DeleteEducation)
 	api.GET("/profile/portfolio", h.GetPortfolio)
 	api.POST("/profile/portfolio", h.CreatePortfolioItem)
+	api.PATCH("/profile/portfolio/:id", h.UpdatePortfolioItem)
 	api.DELETE("/profile/portfolio/:id", h.DeletePortfolioItem)
 
 	// Reviews
@@ -1155,6 +1156,22 @@ func (h *Handler) CreatePortfolioItem(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, m(err.Error()))
 	}
 	return c.JSON(http.StatusCreated, item)
+}
+
+func (h *Handler) UpdatePortfolioItem(c echo.Context) error {
+	id := parseID(c.Param("id"))
+	if id == 0 {
+		return c.JSON(http.StatusBadRequest, m("Неверный ID"))
+	}
+	var req model.UpdatePortfolioRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, m("Неверный формат"))
+	}
+	item, err := h.portfolioRepo.Update(id, req.Caption)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, m(err.Error()))
+	}
+	return c.JSON(http.StatusOK, item)
 }
 
 func (h *Handler) DeletePortfolioItem(c echo.Context) error {

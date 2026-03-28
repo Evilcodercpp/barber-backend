@@ -101,6 +101,18 @@ func (r *MasterPortfolioRepository) Create(req model.CreatePortfolioRequest) (*m
 	return &item, nil
 }
 
+func (r *MasterPortfolioRepository) Update(id uint, caption string) (*model.MasterPortfolio, error) {
+	var item model.MasterPortfolio
+	if err := r.db.First(&item, id).Error; err != nil {
+		return nil, err
+	}
+	item.Caption = caption
+	if err := r.db.Save(&item).Error; err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
 func (r *MasterPortfolioRepository) Delete(id uint) error {
 	return r.db.Delete(&model.MasterPortfolio{}, id).Error
 }
