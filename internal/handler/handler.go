@@ -517,7 +517,11 @@ func (h *Handler) UploadFile(c echo.Context) error {
 	_ = writer.WriteField("key", imgbbKey)
 	_ = writer.WriteField("image", encoded)
 	ext := filepath.Ext(file.Filename)
-	_ = writer.WriteField("name", fmt.Sprintf("%d%s", time.Now().UnixNano(), ext))
+	imgbbExt := ext
+	if imgbbExt == ".heic" || imgbbExt == ".heif" || imgbbExt == "" {
+		imgbbExt = ".jpg"
+	}
+	_ = writer.WriteField("name", fmt.Sprintf("%d%s", time.Now().UnixNano(), imgbbExt))
 	writer.Close()
 
 	resp, err := http.Post("https://api.imgbb.com/1/upload", writer.FormDataContentType(), &body)
