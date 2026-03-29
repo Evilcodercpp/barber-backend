@@ -26,6 +26,8 @@ func (s *ServiceService) Create(req model.CreateServiceRequest) (*model.Service,
 		DurationMin: req.DurationMin,
 		Price:       req.Price,
 		Category:    req.Category,
+		Description: req.Description,
+		Photos:      req.Photos,
 	}
 
 	if err := s.repo.Create(svc); err != nil {
@@ -81,24 +83,14 @@ func (s *ServiceService) SeedDefaults() error {
 	}
 
 	for i := range defaults {
-		existing, err := s.repo.GetByName(defaults[i].Name)
+		_, err := s.repo.GetByName(defaults[i].Name)
 		if err != nil {
 			// не найдена — создаём
 			if err := s.repo.Create(&defaults[i]); err != nil {
 				return err
 			}
-		} else {
-			// найдена — обновляем
-			existing.Duration = defaults[i].Duration
-			existing.DurationMin = defaults[i].DurationMin
-			existing.Price = defaults[i].Price
-			existing.Category = defaults[i].Category
-			existing.SortOrder = defaults[i].SortOrder
-			existing.Description = defaults[i].Description
-			if err := s.repo.Update(existing); err != nil {
-				return err
-			}
 		}
+		// найдена — не трогаем, чтобы не затирать изменения мастера
 	}
 	return nil
 }
