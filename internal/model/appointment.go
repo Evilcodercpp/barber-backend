@@ -256,6 +256,7 @@ type MasterProfile struct {
 	Bio             string `json:"bio" gorm:"type:text"`
 	ExperienceYears int    `json:"experience_years"`
 	PhotoURL        string `json:"photo_url"`
+	PhotoURLs       string `json:"photo_urls" gorm:"type:text"` // JSON array of photo URLs
 }
 
 // MasterEducation — запись об образовании или сертификате
@@ -279,6 +280,7 @@ type UpdateProfileRequest struct {
 	Bio             string `json:"bio"`
 	ExperienceYears int    `json:"experience_years"`
 	PhotoURL        string `json:"photo_url"`
+	PhotoURLs       string `json:"photo_urls"`
 }
 
 type CreateEducationRequest struct {

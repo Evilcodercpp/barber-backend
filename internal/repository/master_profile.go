@@ -27,6 +27,7 @@ func (r *MasterProfileRepository) Upsert(req model.UpdateProfileRequest) (*model
 	p.Bio = req.Bio
 	p.ExperienceYears = req.ExperienceYears
 	p.PhotoURL = req.PhotoURL
+	p.PhotoURLs = req.PhotoURLs
 	if err := r.db.Save(&p).Error; err != nil {
 		return nil, err
 	}
